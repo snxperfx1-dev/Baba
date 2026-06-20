@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v16", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v17", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -1527,91 +1527,9 @@ if barstate.islast
     array<int> _fwd = f_pathNodes(true)
     int _nextIdx = array.size(_fwd) > 0 ? array.get(_fwd, 0) : -1
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // F72 — CAMPAIGN OWNERSHIP ENGINE (Levels 1-3) — answers the four questions:
-    // who owns price · build vs terminal · how much curve remains · expected depth.
-    // Reads the existing FU/flip-zone network map (the hard part is already solved).
-    // ══════════════════════════════════════════════════════════════════════════
-    float  _htfZone    = _nextIdx >= 0 ? array.get(nPx, _nextIdx) : na      // nearest forward FU/flip zone
-    int    _htfWt      = _nextIdx >= 0 ? array.get(nWt, _nextIdx) : 0
-    float  _distHTF    = not na(_htfZone) ? math.abs(_htfZone - close) : na
-    float  _curveBudget = not na(_distHTF) ? math.min(100.0, _distHTF / math.max(atr * 8.0, 1e-10) * 100.0) : na
-    // Compression (global): high when displacement & efficiency are LOW
-    float  _gComp      = math.min(100.0, math.max(0.0, (1.0 - math.min(displacement / math.max(dispThresh, 1e-10), 1.0)) * 60.0 + (1.0 - math.min(efficiency / math.max(effThresh, 1e-10), 1.0)) * 40.0))
-    string _compRegime = _gComp >= 75 ? "FAILURE SWING" : _gComp >= 50 ? "COMPRESSED" : _gComp >= 25 ? "MEDIUM" : "WIDE"
-    bool   _atHTF      = not na(_distHTF) and _distHTF < atr * 1.5
-    bool   _nearHTF    = not na(_curveBudget) and _curveBudget < 25.0
-    bool   _termPhase  = str.contains(ie1a_currentPhase, "Induction") or str.contains(ie1a_currentPhase, "Liquidation") or str.contains(ie1a_currentPhase, "Terminal") or str.contains(ie1a_currentPhase, "HTF Flip") or str.contains(ie1a_currentPhase, "Return")
-    string _campaign   = (_atHTF or _termPhase) ? "TERMINAL" : "EXPANSION"
-    string _location   = (_atHTF or _termPhase) ? "INSIDE HTF ZONE" : _nearHTF ? "APPROACHING HTF ZONE" : (str.contains(ie1a_currentPhase, "Transition") or str.contains(ie1a_currentPhase, "Retracement")) ? "TRANSITIONING" : "BUILDING"
-    // Expected recursive depth — compression scales toward the canonical 4 shifts
-    // (Wyckoff Spring·Test·LPS1·LPS2); wide/low-compression resolves in fewer curves.
-    int    _expDepth   = _campaign == "EXPANSION" ? 0 : math.max(1, math.min(4, 1 + math.round(_gComp / 33.0)))
-    int    _ownerDir   = displayWaveDir_M5 != 0 ? displayWaveDir_M5 : master
-    string _ownerTx    = (_ownerDir == 1 ? "▲ BULL  " : _ownerDir == -1 ? "▼ BEAR  " : "○  ") + (_nextIdx >= 0 ? f_wtTf(_htfWt) + " FU" : "—")
-    color  _campCol    = _campaign == "TERMINAL" ? #fbbf24 : #34d399
-    // ── PARTICIPANT ENGINE — where other participants interfere with the parent
-    //    curve. 0.618/0.70/0.786 = manipulation / displacement; the FLIP = the TRUE
-    //    induction (lowest flip). The question: has interference become dominant?
-    float  _pcHi    = direction == 1 ? nz(cycleHigh, high) : direction == -1 ? nz(cycleLow, low) : na
-    float  _pcLo    = direction == 1 ? nz(point4OriginLow, flipBot) : direction == -1 ? nz(point4OriginHigh, flipTop) : na
-    float  _pcRng   = (not na(_pcHi) and not na(_pcLo)) ? _pcHi - _pcLo : na
-    float  _f618    = not na(_pcRng) ? _pcHi - 0.618 * _pcRng : na
-    float  _f70     = not na(_pcRng) ? _pcHi - 0.70  * _pcRng : na
-    float  _f786    = not na(_pcRng) ? _pcHi - 0.786 * _pcRng : na
-    float  _flipLvl = direction == 1 ? flipBot : direction == -1 ? flipTop : na
-    float  _retrAbs = (not na(_pcRng) and math.abs(_pcRng) > 1e-10) ? math.abs(_pcHi - close) / math.abs(_pcRng) : na
-    string _partZone = na(_retrAbs) ? "—" : _retrAbs < 0.55 ? "pre-0.618 · clean" : _retrAbs < 0.66 ? "0.618 · participants in" : _retrAbs < 0.74 ? "0.70 · interference" : _retrAbs < 0.82 ? "0.786 · heavy" : "FLIP · true induction"
-    bool   _inPartBand = not na(_retrAbs) and _retrAbs >= 0.55
-    bool   _displacing = _inPartBand and (bullImpulse or bearImpulse)
-    bool   _interfDom  = str.contains(ie1a_currentPhase, "Transition") or str.contains(ie1a_currentPhase, "Retracement") or str.contains(ie1a_currentPhase, "Return") or str.contains(ie1a_currentPhase, "Induction") or str.contains(ie1a_currentPhase, "Liquidation") or str.contains(ie1a_currentPhase, "Terminal")
-    string _interfTx   = na(_retrAbs) ? "—" : _interfDom ? "DOMINANT · recursive owns" : _displacing ? "active · displacement" : "absorbed · parent continues"
-    color  _interfCol  = _interfDom ? #fb7185 : _displacing ? #fbbf24 : #34d399
-    if showParticipants
-        if array.size(part_lines) > 0
-            for _pi = 0 to array.size(part_lines) - 1
-                line.delete(array.get(part_lines, _pi))
-            array.clear(part_lines)
-        if array.size(part_lbls) > 0
-            for _pi = 0 to array.size(part_lbls) - 1
-                label.delete(array.get(part_lbls, _pi))
-            array.clear(part_lbls)
-        int _px2 = bar_index + 12
-        if not na(_f618)
-            array.push(part_lines, line.new(bar_index - 2, _f618, _px2, _f618, color = color.new(#38bdf8, 35), width = 1, style = line.style_dotted))
-            array.push(part_lbls,  label.new(_px2, _f618, "0.618 · participants", style = label.style_label_left, color = color.new(#0b1220, 25), textcolor = #7dd3fc, size = size.tiny))
-        if not na(_f70)
-            array.push(part_lines, line.new(bar_index - 2, _f70, _px2, _f70, color = color.new(#fbbf24, 40), width = 1, style = line.style_dotted))
-            array.push(part_lbls,  label.new(_px2, _f70, "0.70 · interference", style = label.style_label_left, color = color.new(#0b1220, 25), textcolor = #fcd34d, size = size.tiny))
-        if not na(_f786)
-            array.push(part_lines, line.new(bar_index - 2, _f786, _px2, _f786, color = color.new(#fb923c, 40), width = 1, style = line.style_dotted))
-            array.push(part_lbls,  label.new(_px2, _f786, "0.786 · heavy", style = label.style_label_left, color = color.new(#0b1220, 25), textcolor = #fdba74, size = size.tiny))
-        if not na(_flipLvl)
-            array.push(part_lines, line.new(bar_index - 2, _flipLvl, _px2, _flipLvl, color = color.new(#f43f5e, 18), width = 2))
-            array.push(part_lbls,  label.new(_px2, _flipLvl, "FLIP · TRUE INDUCTION", style = label.style_label_left, color = color.new(#f43f5e, 12), textcolor = #0d1117, size = size.tiny))
-    if showCampaign
-        if na(campaign)
-            campaign := table.new(position.middle_left, 2, 10, bgcolor = color.new(#0a0e27, 4), frame_color = color.new(#22d3ee, 25), frame_width = 2, border_width = 0)
-        table.cell(campaign, 0, 0, "◤ CAMPAIGN ▌ F72 " + _liveDot, text_color = #d7faff, text_size = size.normal, text_halign = text.align_left, bgcolor = color.new(#0c4a6e, 12))
-        table.cell(campaign, 1, 0, _campaign, text_color = #06121f, text_size = size.normal, bgcolor = color.new(_campCol, 25))
-        table.cell(campaign, 0, 1, "Who owns price", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
-        table.cell(campaign, 1, 1, _ownerTx, text_color = _ownerDir == 1 ? #34d399 : _ownerDir == -1 ? #fb7185 : #94a3b8, text_size = size.small)
-        table.cell(campaign, 0, 2, "Location", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
-        table.cell(campaign, 1, 2, _location, text_color = #e2e8f0, text_size = size.small, bgcolor = color.new(_campCol, 80))
-        table.cell(campaign, 0, 3, "Compression", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
-        table.cell(campaign, 1, 3, _compRegime + "  " + str.tostring(math.round(_gComp)) + "%", text_color = _gComp >= 50 ? #fbbf24 : #34d399, text_size = size.small)
-        table.cell(campaign, 0, 4, "Curve budget → HTF", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
-        table.cell(campaign, 1, 4, na(_curveBudget) ? "—" : str.tostring(math.round(_curveBudget)) + "%  " + f_cpNode(_nextIdx), text_color = #e2e8f0, text_size = size.small)
-        table.cell(campaign, 0, 5, "Recursive depth", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
-        table.cell(campaign, 1, 5, "exp " + str.tostring(_expDepth) + " / 4   obs " + str.tostring(entryCycle), text_color = #c4b5fd, text_size = size.small)
-        table.cell(campaign, 0, 6, "Transition maturity", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
-        table.cell(campaign, 1, 6, str.tostring(math.round(waveProgress)) + "%", text_color = #e2e8f0, text_size = size.small)
-        table.cell(campaign, 0, 7, "Participant zone", text_color = #5fd0ff, text_size = size.small, text_halign = text.align_left)
-        table.cell(campaign, 1, 7, _partZone, text_color = #7dd3fc, text_size = size.small, text_halign = text.align_left)
-        table.cell(campaign, 0, 8, "Interference", text_color = #5fd0ff, text_size = size.small, text_halign = text.align_left)
-        table.cell(campaign, 1, 8, _interfTx, text_color = _interfCol, text_size = size.small, text_halign = text.align_left)
-        table.cell(campaign, 0, 9, _campaign == "TERMINAL" ? "⚠ ENTRY CYCLE — read convexity" : "● BUILDING — destination known", text_color = _campaign == "TERMINAL" ? #fbbf24 : #34d399, text_size = size.small, text_halign = text.align_left)
-        table.cell(campaign, 1, 9, "", text_size = size.small)
+    // F72 Campaign Ownership + Participant Engine moved to their own barstate.islast
+    // block near the end of the script (keeps this block under Pine's size limit).
+
 
     color vCol = master == 1 ? #34d399 : master == -1 ? #fb7185 : #475569
     color aCol = action == "ATTACK" ? #34d399 : action == "PREPARE" ? #fbbf24 : str.startswith(action, "MANAGE") ? #29b6f6 : #475569
@@ -1989,6 +1907,88 @@ if barstate.islast
         table.cell(tfPanel, 1, 7, f_gauge(fractalStackScore), text_color = fractalStackDir == 1 ? #4ade80 : fractalStackDir == -1 ? #f87171 : #fbbf24, text_size = size.normal, text_halign = text.align_left)
         table.cell(tfPanel, 0, 8, (fractalStackScore >= 66 ? "DOMINANT" : "CONTESTED") + " · " + (fractalStackDir == 1 ? "TRANSFER UPWARD" : fractalStackDir == -1 ? "TRANSFER DOWNWARD" : "BALANCED"), text_color = #cfe9ff, text_size = size.small, text_halign = text.align_left)
         table.cell(tfPanel, 1, 8, "", text_size = size.small)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// F72 — CAMPAIGN OWNERSHIP + PARTICIPANT ENGINE (own islast block, size-limit safe)
+// ══════════════════════════════════════════════════════════════════════════════
+if barstate.islast
+    array<int> _fwdC = f_pathNodes(true)
+    int    _nextC      = array.size(_fwdC) > 0 ? array.get(_fwdC, 0) : -1
+    float  _htfZone    = _nextC >= 0 ? array.get(nPx, _nextC) : na
+    int    _htfWt      = _nextC >= 0 ? array.get(nWt, _nextC) : 0
+    float  _distHTF    = not na(_htfZone) ? math.abs(_htfZone - close) : na
+    float  _curveBudget = not na(_distHTF) ? math.min(100.0, _distHTF / math.max(atr * 8.0, 1e-10) * 100.0) : na
+    float  _gComp      = math.min(100.0, math.max(0.0, (1.0 - math.min(displacement / math.max(dispThresh, 1e-10), 1.0)) * 60.0 + (1.0 - math.min(efficiency / math.max(effThresh, 1e-10), 1.0)) * 40.0))
+    string _compRegime = _gComp >= 75 ? "FAILURE SWING" : _gComp >= 50 ? "COMPRESSED" : _gComp >= 25 ? "MEDIUM" : "WIDE"
+    bool   _atHTF      = not na(_distHTF) and _distHTF < atr * 1.5
+    bool   _nearHTF    = not na(_curveBudget) and _curveBudget < 25.0
+    bool   _termPhase  = str.contains(ie1a_currentPhase, "Induction") or str.contains(ie1a_currentPhase, "Liquidation") or str.contains(ie1a_currentPhase, "Terminal") or str.contains(ie1a_currentPhase, "HTF Flip") or str.contains(ie1a_currentPhase, "Return")
+    string _campaign   = (_atHTF or _termPhase) ? "TERMINAL" : "EXPANSION"
+    string _location   = (_atHTF or _termPhase) ? "INSIDE HTF ZONE" : _nearHTF ? "APPROACHING HTF ZONE" : (str.contains(ie1a_currentPhase, "Transition") or str.contains(ie1a_currentPhase, "Retracement")) ? "TRANSITIONING" : "BUILDING"
+    int    _expDepth   = _campaign == "EXPANSION" ? 0 : math.max(1, math.min(4, 1 + math.round(_gComp / 33.0)))
+    int    _ownerDir   = displayWaveDir_M5 != 0 ? displayWaveDir_M5 : gMaster
+    string _ownerTx    = (_ownerDir == 1 ? "▲ BULL  " : _ownerDir == -1 ? "▼ BEAR  " : "○  ") + (_nextC >= 0 ? f_wtTf(_htfWt) + " FU" : "—")
+    color  _campCol    = _campaign == "TERMINAL" ? #fbbf24 : #34d399
+    // PARTICIPANT ENGINE — 0.618/0.70/0.786 = manipulation/displacement; FLIP = true induction
+    float  _pcHi    = direction == 1 ? nz(cycleHigh, high) : direction == -1 ? nz(cycleLow, low) : na
+    float  _pcLo    = direction == 1 ? nz(point4OriginLow, flipBot) : direction == -1 ? nz(point4OriginHigh, flipTop) : na
+    float  _pcRng   = (not na(_pcHi) and not na(_pcLo)) ? _pcHi - _pcLo : na
+    float  _f618    = not na(_pcRng) ? _pcHi - 0.618 * _pcRng : na
+    float  _f70     = not na(_pcRng) ? _pcHi - 0.70  * _pcRng : na
+    float  _f786    = not na(_pcRng) ? _pcHi - 0.786 * _pcRng : na
+    float  _flipLvl = direction == 1 ? flipBot : direction == -1 ? flipTop : na
+    float  _retrAbs = (not na(_pcRng) and math.abs(_pcRng) > 1e-10) ? math.abs(_pcHi - close) / math.abs(_pcRng) : na
+    string _partZone = na(_retrAbs) ? "—" : _retrAbs < 0.55 ? "pre-0.618 · clean" : _retrAbs < 0.66 ? "0.618 · participants in" : _retrAbs < 0.74 ? "0.70 · interference" : _retrAbs < 0.82 ? "0.786 · heavy" : "FLIP · true induction"
+    bool   _inPartBand = not na(_retrAbs) and _retrAbs >= 0.55
+    bool   _displacing = _inPartBand and (bullImpulse or bearImpulse)
+    bool   _interfDom  = str.contains(ie1a_currentPhase, "Transition") or str.contains(ie1a_currentPhase, "Retracement") or str.contains(ie1a_currentPhase, "Return") or str.contains(ie1a_currentPhase, "Induction") or str.contains(ie1a_currentPhase, "Liquidation") or str.contains(ie1a_currentPhase, "Terminal")
+    string _interfTx   = na(_retrAbs) ? "—" : _interfDom ? "DOMINANT · recursive owns" : _displacing ? "active · displacement" : "absorbed · parent continues"
+    color  _interfCol  = _interfDom ? #fb7185 : _displacing ? #fbbf24 : #34d399
+    if showParticipants
+        if array.size(part_lines) > 0
+            for _pi = 0 to array.size(part_lines) - 1
+                line.delete(array.get(part_lines, _pi))
+            array.clear(part_lines)
+        if array.size(part_lbls) > 0
+            for _pi = 0 to array.size(part_lbls) - 1
+                label.delete(array.get(part_lbls, _pi))
+            array.clear(part_lbls)
+        int _px2 = bar_index + 12
+        if not na(_f618)
+            array.push(part_lines, line.new(bar_index - 2, _f618, _px2, _f618, color = color.new(#38bdf8, 35), width = 1, style = line.style_dotted))
+            array.push(part_lbls,  label.new(_px2, _f618, "0.618 · participants", style = label.style_label_left, color = color.new(#0b1220, 25), textcolor = #7dd3fc, size = size.tiny))
+        if not na(_f70)
+            array.push(part_lines, line.new(bar_index - 2, _f70, _px2, _f70, color = color.new(#fbbf24, 40), width = 1, style = line.style_dotted))
+            array.push(part_lbls,  label.new(_px2, _f70, "0.70 · interference", style = label.style_label_left, color = color.new(#0b1220, 25), textcolor = #fcd34d, size = size.tiny))
+        if not na(_f786)
+            array.push(part_lines, line.new(bar_index - 2, _f786, _px2, _f786, color = color.new(#fb923c, 40), width = 1, style = line.style_dotted))
+            array.push(part_lbls,  label.new(_px2, _f786, "0.786 · heavy", style = label.style_label_left, color = color.new(#0b1220, 25), textcolor = #fdba74, size = size.tiny))
+        if not na(_flipLvl)
+            array.push(part_lines, line.new(bar_index - 2, _flipLvl, _px2, _flipLvl, color = color.new(#f43f5e, 18), width = 2))
+            array.push(part_lbls,  label.new(_px2, _flipLvl, "FLIP · TRUE INDUCTION", style = label.style_label_left, color = color.new(#f43f5e, 12), textcolor = #0d1117, size = size.tiny))
+    if showCampaign
+        if na(campaign)
+            campaign := table.new(position.middle_left, 2, 10, bgcolor = color.new(#0a0e27, 4), frame_color = color.new(#22d3ee, 25), frame_width = 2, border_width = 0)
+        table.cell(campaign, 0, 0, "◤ CAMPAIGN ▌ F72 " + _liveDot, text_color = #d7faff, text_size = size.normal, text_halign = text.align_left, bgcolor = color.new(#0c4a6e, 12))
+        table.cell(campaign, 1, 0, _campaign, text_color = #06121f, text_size = size.normal, bgcolor = color.new(_campCol, 25))
+        table.cell(campaign, 0, 1, "Who owns price", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 1, _ownerTx, text_color = _ownerDir == 1 ? #34d399 : _ownerDir == -1 ? #fb7185 : #94a3b8, text_size = size.small)
+        table.cell(campaign, 0, 2, "Location", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 2, _location, text_color = #e2e8f0, text_size = size.small, bgcolor = color.new(_campCol, 80))
+        table.cell(campaign, 0, 3, "Compression", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 3, _compRegime + "  " + str.tostring(math.round(_gComp)) + "%", text_color = _gComp >= 50 ? #fbbf24 : #34d399, text_size = size.small)
+        table.cell(campaign, 0, 4, "Curve budget → HTF", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 4, na(_curveBudget) ? "—" : str.tostring(math.round(_curveBudget)) + "%  " + f_cpNode(_nextC), text_color = #e2e8f0, text_size = size.small)
+        table.cell(campaign, 0, 5, "Recursive depth", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 5, "exp " + str.tostring(_expDepth) + " / 4   obs " + str.tostring(entryCycle), text_color = #c4b5fd, text_size = size.small)
+        table.cell(campaign, 0, 6, "Transition maturity", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 6, str.tostring(math.round(waveProgress)) + "%", text_color = #e2e8f0, text_size = size.small)
+        table.cell(campaign, 0, 7, "Participant zone", text_color = #5fd0ff, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 7, _partZone, text_color = #7dd3fc, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 0, 8, "Interference", text_color = #5fd0ff, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 8, _interfTx, text_color = _interfCol, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 0, 9, _campaign == "TERMINAL" ? "⚠ ENTRY CYCLE — read convexity" : "● BUILDING — destination known", text_color = _campaign == "TERMINAL" ? #fbbf24 : #34d399, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 9, "", text_size = size.small)
 
 // ── Alerts (global scope) ─────────────────────────────────────────────────────
 alertcondition(gAction == "ATTACK" and gMaster == 1,  "Senseei ATTACK Long",  "Master Senseei: ATTACK long")
