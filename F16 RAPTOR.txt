@@ -1812,3 +1812,217 @@ if barstate.islast
 alertcondition(gAction == "ATTACK" and gMaster == 1,  "Senseei ATTACK Long",  "Master Senseei: ATTACK long")
 alertcondition(gAction == "ATTACK" and gMaster == -1, "Senseei ATTACK Short", "Master Senseei: ATTACK short")
 alertcondition(gConflict > 60, "Senseei CONFLICT", "Master Senseei: engines in conflict")
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// V0 — SEMANTIC INTEGRITY & POLARITY VERIFICATION FRAMEWORK
+//   "Before Intelligence, Verify Meaning."
+//
+//   V0 is a PASSIVE AUDIT layer. It reads the existing engine outputs ONLY and
+//   verifies that every engine means the SAME thing when it says Bullish (+1) or
+//   Bearish (-1). It NEVER fixes engines, changes a phase / belief / decision,
+//   overrides anything, creates a trade signal, or trades. It only asks:
+//   "Does everyone mean the same thing?"
+//
+//   CORE AXIOM (the only two truths):
+//     +1 = BULLISH  — price seeks higher liquidity · demand dominates · destination above.
+//     -1 = BEARISH  — price seeks lower  liquidity · supply dominates · destination below.
+//
+//   Everything below DERIVES from these truths and is read straight from the live
+//   engine variables (displayWaveDir_M5, direction, se5_dir, netBias, gMaster,
+//   waveObj, ie1a_currentPhase, …) — V0 introduces no new market logic of its own.
+// ═══════════════════════════════════════════════════════════════════════════════
+string GRPV0 = "V0 — Semantic Integrity"
+bool   showV0   = input.bool(true, "Show V0 Semantic Integrity panel", group = GRPV0)
+int    v0Window = input.int (200,  "Mirror-detection window (bars)",   group = GRPV0, minval = 20, maxval = 1000)
+bool   v0Alert  = input.bool(true, "Enable semantic-corruption alert", group = GRPV0)
+
+// ── Canonical polarity helpers ───────────────────────────────────────────────
+f_v0_pol(int _d)  => _d > 0 ? 1 : _d < 0 ? -1 : 0
+f_v0_arr(int _d)  => _d == 1 ? "▲ BULL" : _d == -1 ? "▼ BEAR" : "— flat"
+f_v0_col(int _d)  => _d == 1 ? #34d399 : _d == -1 ? #fb7185 : #64748b
+f_v0_score(int _d, int _ref) => _ref == 0 ? 50.0 : _d == 0 ? 60.0 : _d == _ref ? 100.0 : 0.0
+f_v0_stat(int _d, int _ref)  => _ref == 0 ? "—" : _d == 0 ? "n/a" : _d == _ref ? "OK" : "INVERTED"
+
+// ── Truth anchors (computed every bar from globally-live engine state) ───────
+// Destination polarity: objective above current price = Bullish, below = Bearish.
+int v0_destDir = na(waveObj) ? 0 : waveObj > close ? 1 : waveObj < close ? -1 : 0
+// IE1A phase polarity where the phase NAME alone is unambiguous (else 0).
+int v0_ie1aPhaseDir =
+     ie1a_currentPhase == "Demand Return" ? 1 :
+     ie1a_currentPhase == "Supply Return" ? -1 :
+     ie1a_currentPhase == "New High"      ? 1 :
+     ie1a_currentPhase == "New Low"       ? -1 : 0
+
+// ── LEVELS 1-12 — per-engine polarity, read straight from the live outputs ────
+int v0_ie1aDir = f_v0_pol(displayWaveDir_M5)        // L1  Engine 1A (lifecycle authority)
+int v0_erfDir  = f_v0_pol(direction)                // L2  Energy/Resolution/Attractor wave dir
+int v0_frzDir  = f_v0_pol(int(nz(se5_dir)))         // L3  FRZ / FRC flip-zone direction
+int v0_belDir  = f_v0_pol(l2_dir + l4_dir)          // L4  HTF Belief (H1 + H4 stack)
+int v0_rieDir  = f_v0_pol(netBias)                  // L5  Rotation / network pressure
+int v0_mceDir  = f_v0_pol(gMaster)                  // L6  MCE consensus
+int v0_neDir   = f_v0_pol(waveDir)                  // L7  Narrative wave direction
+int v0_tqeDir  = v0_destDir                         // L8  Trade qualification follows destination
+int v0_doeDir  = f_v0_pol(gMaster)                  // L9  Decision / orchestration bias
+int v0_destDr  = v0_destDir                         // L10 Destination engine
+int v0_lblDir  = f_v0_pol(gMaster)                  // L11 Verdict / label colour source
+int v0_objDir  = f_v0_pol(gMaster)                  // L12 Region / HUD object colour source
+
+// ── CROSS-ENGINE REFERENCE — weighted majority polarity (the "consensus truth")
+int v0_voteSum = v0_ie1aDir + v0_erfDir + v0_frzDir + v0_belDir + v0_rieDir + v0_mceDir + v0_neDir + v0_tqeDir + v0_doeDir + v0_destDr + v0_lblDir
+int v0_refDir  = v0_voteSum > 0 ? 1 : v0_voteSum < 0 ? -1 : 0
+
+// ── SEMANTIC TRUST SCORE (0-100) — spec weights (sum = 100) ──────────────────
+float v0_sIE1A = f_v0_score(v0_ie1aDir, v0_refDir)
+float v0_sERF  = f_v0_score(v0_erfDir,  v0_refDir)
+float v0_sFRZ  = f_v0_score(v0_frzDir,  v0_refDir)
+float v0_sBel  = f_v0_score(v0_belDir,  v0_refDir)
+float v0_sRIE  = f_v0_score(v0_rieDir,  v0_refDir)
+float v0_sMCE  = f_v0_score(v0_mceDir,  v0_refDir)
+float v0_sNE   = f_v0_score(v0_neDir,   v0_refDir)
+float v0_sTQE  = f_v0_score(v0_tqeDir,  v0_refDir)
+float v0_sDOE  = f_v0_score(v0_doeDir,  v0_refDir)
+float v0_sDest = f_v0_score(v0_destDr,  v0_refDir)
+float v0_sLbl  = f_v0_score(v0_lblDir,  v0_refDir)
+float systemTrustScore = (v0_sIE1A * 15.0 + v0_sERF * 10.0 + v0_sFRZ * 15.0 + v0_sBel * 10.0 + v0_sRIE * 5.0 + v0_sMCE * 5.0 + v0_sNE * 10.0 + v0_sTQE * 5.0 + v0_sDOE * 15.0 + v0_sDest * 5.0 + v0_sLbl * 5.0) / 100.0
+float semanticIntegrityScore = systemTrustScore
+float semanticCorruptionRisk = 100.0 - systemTrustScore
+
+// ── POLARITY CONSISTENCY — share of casting engines that agree with the ref ──
+int v0_cast =
+     (v0_ie1aDir != 0 ? 1 : 0) + (v0_erfDir != 0 ? 1 : 0) + (v0_frzDir != 0 ? 1 : 0) + (v0_belDir != 0 ? 1 : 0) +
+     (v0_rieDir != 0 ? 1 : 0) + (v0_mceDir != 0 ? 1 : 0) + (v0_neDir != 0 ? 1 : 0) + (v0_tqeDir != 0 ? 1 : 0) +
+     (v0_doeDir != 0 ? 1 : 0) + (v0_destDr != 0 ? 1 : 0) + (v0_lblDir != 0 ? 1 : 0)
+int v0_agree =
+     (v0_ie1aDir == v0_refDir and v0_ie1aDir != 0 ? 1 : 0) + (v0_erfDir == v0_refDir and v0_erfDir != 0 ? 1 : 0) +
+     (v0_frzDir == v0_refDir and v0_frzDir != 0 ? 1 : 0) + (v0_belDir == v0_refDir and v0_belDir != 0 ? 1 : 0) +
+     (v0_rieDir == v0_refDir and v0_rieDir != 0 ? 1 : 0) + (v0_mceDir == v0_refDir and v0_mceDir != 0 ? 1 : 0) +
+     (v0_neDir == v0_refDir and v0_neDir != 0 ? 1 : 0)   + (v0_tqeDir == v0_refDir and v0_tqeDir != 0 ? 1 : 0) +
+     (v0_doeDir == v0_refDir and v0_doeDir != 0 ? 1 : 0) + (v0_destDr == v0_refDir and v0_destDr != 0 ? 1 : 0) +
+     (v0_lblDir == v0_refDir and v0_lblDir != 0 ? 1 : 0)
+float polarityConsistency = v0_cast > 0 ? float(v0_agree) / float(v0_cast) * 100.0 : 100.0
+
+// ── CONTRADICTION ENGINE — the dangerous, named inversions from the spec ─────
+bool v0_cIE1A = v0_ie1aPhaseDir != 0 and v0_ie1aDir != 0 and v0_ie1aPhaseDir != v0_ie1aDir                                        // IE1A phase NAME contradicts its own wave dir — CRITICAL (ie1a_inversionRisk)
+bool v0_cDest = v0_destDir != 0 and v0_doeDir != 0 and v0_destDir != v0_doeDir                                                   // Destination above while DOE says SELL — CRITICAL
+bool v0_cFrz  = v0_frzDir  != 0 and v0_ie1aDir != 0 and v0_frzDir != v0_ie1aDir                                                   // FRZ polarity inverted vs IE1A — CRITICAL
+bool v0_cOwn  = (ie1a_currentPhase == "Demand Return" and v0_erfDir == -1) or (ie1a_currentPhase == "Supply Return" and v0_erfDir == 1)  // Demand Return w/ supply ownership — CRITICAL
+bool v0_cNarr = v0_neDir != 0 and v0_lblDir != 0 and v0_neDir != v0_lblDir                                                        // Bullish narrative w/ bearish labels — HIGH
+bool v0_cExp  = str.contains(ie1a_currentPhase, "Expansion") and v0_erfDir != 0 and v0_mceDir != 0 and v0_erfDir != v0_mceDir     // Expansion up w/ bearish consensus — HIGH
+int  contradictionCount = (v0_cIE1A ? 1 : 0) + (v0_cDest ? 1 : 0) + (v0_cFrz ? 1 : 0) + (v0_cOwn ? 1 : 0) + (v0_cNarr ? 1 : 0) + (v0_cExp ? 1 : 0)
+bool v0_critical = v0_cIE1A or v0_cDest or v0_cFrz or v0_cOwn
+string contradictionSeverity = v0_critical ? "CRITICAL" : (v0_cNarr or v0_cExp) ? "HIGH" : contradictionCount > 0 ? "MEDIUM" : "NONE"
+float semanticCorruptionIndex = math.min(100.0, (v0_cIE1A ? 40.0 : 0.0) + (v0_cDest ? 40.0 : 0.0) + (v0_cFrz ? 35.0 : 0.0) + (v0_cOwn ? 35.0 : 0.0) + (v0_cNarr ? 15.0 : 0.0) + (v0_cExp ? 15.0 : 0.0))
+
+// ── ROOT CAUSE ENGINE — first engine (in canonical order) opposing the ref ───
+string corruptionSource =
+     v0_refDir == 0                                            ? "—" :
+     (v0_ie1aDir != 0 and v0_ie1aDir != v0_refDir)             ? "IE1A (L1)" :
+     (v0_erfDir  != 0 and v0_erfDir  != v0_refDir)             ? "ERF/EAE (L2)" :
+     (v0_frzDir  != 0 and v0_frzDir  != v0_refDir)             ? "FRZ/FRC (L3)" :
+     (v0_belDir  != 0 and v0_belDir  != v0_refDir)             ? "Belief (L4)" :
+     (v0_rieDir  != 0 and v0_rieDir  != v0_refDir)             ? "Rotation (L5)" :
+     (v0_mceDir  != 0 and v0_mceDir  != v0_refDir)             ? "MCE (L6)" :
+     (v0_neDir   != 0 and v0_neDir   != v0_refDir)             ? "Narrative (L7)" :
+     (v0_tqeDir  != 0 and v0_tqeDir  != v0_refDir)             ? "TQE (L8)" :
+     (v0_doeDir  != 0 and v0_doeDir  != v0_refDir)             ? "DOE (L9)" :
+     (v0_destDr  != 0 and v0_destDr  != v0_refDir)             ? "Destination (L10)" : "None"
+
+// ── MIRROR DETECTION ENGINE — sustained full inversion across a window ───────
+// A "mirror" bar = the STRUCTURAL truth (wave + network direction) points one way
+// while the DESTINATION sits the other way, for casting bars only. Both inputs
+// update every bar, so the probability is measured across real history.
+var array<int> v0_mirrBuf = array.new_int()
+if barstate.isconfirmed
+    int _strDir = f_v0_pol(displayWaveDir_M5 + direction + netBias)
+    int _flag   = (_strDir != 0 and v0_destDir != 0) ? (_strDir != v0_destDir ? 1 : 0) : -1
+    if _flag >= 0
+        array.push(v0_mirrBuf, _flag)
+        if array.size(v0_mirrBuf) > v0Window
+            array.shift(v0_mirrBuf)
+float mirrorProbability = array.size(v0_mirrBuf) > 0 ? array.sum(v0_mirrBuf) / array.size(v0_mirrBuf) * 100.0 : 0.0
+float semanticMirrorScore = 100.0 - mirrorProbability
+
+// ── BAR-BY-BAR TRACE — capture corruption events for replay (state only) ─────
+var array<string> v0_traceLog = array.new<string>()
+var int v0_traceCount = 0
+if barstate.isconfirmed and contradictionCount > 0
+    v0_traceCount += 1
+    array.push(v0_traceLog, str.format_time(time, "MM-dd HH:mm", syminfo.timezone) + "  " + contradictionSeverity + "  src:" + corruptionSource)
+    if array.size(v0_traceLog) > 50
+        array.shift(v0_traceLog)
+
+// ── VERDICT + colour ─────────────────────────────────────────────────────────
+string v0_verdict = semanticIntegrityScore >= 90 and contradictionCount == 0 ? "COHERENT" : v0_critical ? "CORRUPTED" : semanticIntegrityScore >= 70 ? "MINOR DRIFT" : "DEGRADED"
+color  v0_vCol    = v0_verdict == "COHERENT" ? #34d399 : v0_verdict == "MINOR DRIFT" ? #fbbf24 : v0_verdict == "DEGRADED" ? #fb923c : #fb7185
+
+// ── V0 PANEL (top-center — a free slot; other panels own the 4 corners) ──────
+var table v0Panel = na
+if showV0 and barstate.islast
+    if na(v0Panel)
+        v0Panel := table.new(position.top_center, 3, 20, bgcolor = color.new(#0a0e27, 6), frame_color = color.new(#22d3ee, 25), frame_width = 2, border_width = 0)
+    table.cell(v0Panel, 0, 0, "◤ V0 ▌ SEMANTIC INTEGRITY", text_color = #d7faff, text_size = size.normal, text_halign = text.align_left, bgcolor = color.new(#0c4a6e, 15))
+    table.cell(v0Panel, 1, 0, "", bgcolor = color.new(#0c4a6e, 15))
+    table.cell(v0Panel, 2, 0, v0_verdict, text_color = #0a0e27, text_size = size.normal, bgcolor = color.new(v0_vCol, 18))
+    // headline metrics
+    table.cell(v0Panel, 0, 1, "Trust Score", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 1, f_gauge(systemTrustScore), text_color = v0_vCol, text_size = size.small)
+    table.cell(v0Panel, 2, 1, str.tostring(math.round(systemTrustScore)) + "/100", text_color = v0_vCol, text_size = size.small)
+    table.cell(v0Panel, 0, 2, "Reference Polarity", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 2, f_v0_arr(v0_refDir), text_color = f_v0_col(v0_refDir), text_size = size.small)
+    table.cell(v0Panel, 2, 2, str.tostring(math.round(polarityConsistency)) + "% aligned", text_color = #e2e8f0, text_size = size.small)
+    table.cell(v0Panel, 0, 3, "Mirror Probability", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 3, f_gauge(mirrorProbability), text_color = mirrorProbability >= 50 ? #fb7185 : mirrorProbability >= 20 ? #fbbf24 : #34d399, text_size = size.small)
+    table.cell(v0Panel, 2, 3, str.tostring(math.round(mirrorProbability)) + "%", text_color = mirrorProbability >= 50 ? #fb7185 : #e2e8f0, text_size = size.small)
+    table.cell(v0Panel, 0, 4, "Contradictions", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 4, str.tostring(contradictionCount) + " active", text_color = contradictionCount > 0 ? #fb7185 : #34d399, text_size = size.small)
+    table.cell(v0Panel, 2, 4, contradictionSeverity, text_color = v0_critical ? #fb7185 : contradictionCount > 0 ? #fbbf24 : #34d399, text_size = size.small)
+    table.cell(v0Panel, 0, 5, "Corruption Index", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 5, f_gauge(semanticCorruptionIndex), text_color = semanticCorruptionIndex >= 35 ? #fb7185 : #34d399, text_size = size.small)
+    table.cell(v0Panel, 2, 5, str.tostring(math.round(semanticCorruptionIndex)), text_color = #e2e8f0, text_size = size.small)
+    table.cell(v0Panel, 0, 6, "Root Cause", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 6, corruptionSource, text_color = corruptionSource == "None" or corruptionSource == "—" ? #34d399 : #fb7185, text_size = size.small)
+    table.cell(v0Panel, 2, 6, "events " + str.tostring(v0_traceCount), text_color = #64748b, text_size = size.small)
+    // cross-engine consistency matrix
+    table.cell(v0Panel, 0, 7, "── CROSS-ENGINE MATRIX ──", text_color = #cfe9ff, text_size = size.small, text_halign = text.align_left, bgcolor = color.new(#1f2937, 12))
+    table.cell(v0Panel, 1, 7, "", bgcolor = color.new(#1f2937, 12))
+    table.cell(v0Panel, 2, 7, "", bgcolor = color.new(#1f2937, 12))
+    table.cell(v0Panel, 0, 8,  "L1 IE1A",        text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 8,  f_v0_arr(v0_ie1aDir), text_color = f_v0_col(v0_ie1aDir), text_size = size.small)
+    table.cell(v0Panel, 2, 8,  f_v0_stat(v0_ie1aDir, v0_refDir), text_color = f_v0_stat(v0_ie1aDir, v0_refDir) == "INVERTED" ? #fb7185 : #94a3b8, text_size = size.small)
+    table.cell(v0Panel, 0, 9,  "L2 ERF/EAE",     text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 9,  f_v0_arr(v0_erfDir), text_color = f_v0_col(v0_erfDir), text_size = size.small)
+    table.cell(v0Panel, 2, 9,  f_v0_stat(v0_erfDir, v0_refDir), text_color = f_v0_stat(v0_erfDir, v0_refDir) == "INVERTED" ? #fb7185 : #94a3b8, text_size = size.small)
+    table.cell(v0Panel, 0, 10, "L3 FRZ/FRC",     text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 10, f_v0_arr(v0_frzDir), text_color = f_v0_col(v0_frzDir), text_size = size.small)
+    table.cell(v0Panel, 2, 10, f_v0_stat(v0_frzDir, v0_refDir), text_color = f_v0_stat(v0_frzDir, v0_refDir) == "INVERTED" ? #fb7185 : #94a3b8, text_size = size.small)
+    table.cell(v0Panel, 0, 11, "L4 Belief",      text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 11, f_v0_arr(v0_belDir), text_color = f_v0_col(v0_belDir), text_size = size.small)
+    table.cell(v0Panel, 2, 11, f_v0_stat(v0_belDir, v0_refDir), text_color = f_v0_stat(v0_belDir, v0_refDir) == "INVERTED" ? #fb7185 : #94a3b8, text_size = size.small)
+    table.cell(v0Panel, 0, 12, "L5 Rotation",    text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 12, f_v0_arr(v0_rieDir), text_color = f_v0_col(v0_rieDir), text_size = size.small)
+    table.cell(v0Panel, 2, 12, f_v0_stat(v0_rieDir, v0_refDir), text_color = f_v0_stat(v0_rieDir, v0_refDir) == "INVERTED" ? #fb7185 : #94a3b8, text_size = size.small)
+    table.cell(v0Panel, 0, 13, "L6 MCE",         text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 13, f_v0_arr(v0_mceDir), text_color = f_v0_col(v0_mceDir), text_size = size.small)
+    table.cell(v0Panel, 2, 13, f_v0_stat(v0_mceDir, v0_refDir), text_color = f_v0_stat(v0_mceDir, v0_refDir) == "INVERTED" ? #fb7185 : #94a3b8, text_size = size.small)
+    table.cell(v0Panel, 0, 14, "L7 Narrative",   text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 14, f_v0_arr(v0_neDir), text_color = f_v0_col(v0_neDir), text_size = size.small)
+    table.cell(v0Panel, 2, 14, f_v0_stat(v0_neDir, v0_refDir), text_color = f_v0_stat(v0_neDir, v0_refDir) == "INVERTED" ? #fb7185 : #94a3b8, text_size = size.small)
+    table.cell(v0Panel, 0, 15, "L8 TQE",         text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 15, f_v0_arr(v0_tqeDir), text_color = f_v0_col(v0_tqeDir), text_size = size.small)
+    table.cell(v0Panel, 2, 15, f_v0_stat(v0_tqeDir, v0_refDir), text_color = f_v0_stat(v0_tqeDir, v0_refDir) == "INVERTED" ? #fb7185 : #94a3b8, text_size = size.small)
+    table.cell(v0Panel, 0, 16, "L9 DOE",         text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 16, f_v0_arr(v0_doeDir), text_color = f_v0_col(v0_doeDir), text_size = size.small)
+    table.cell(v0Panel, 2, 16, f_v0_stat(v0_doeDir, v0_refDir), text_color = f_v0_stat(v0_doeDir, v0_refDir) == "INVERTED" ? #fb7185 : #94a3b8, text_size = size.small)
+    table.cell(v0Panel, 0, 17, "L10 Destination", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 17, f_v0_arr(v0_destDr), text_color = f_v0_col(v0_destDr), text_size = size.small)
+    table.cell(v0Panel, 2, 17, f_v0_stat(v0_destDr, v0_refDir), text_color = f_v0_stat(v0_destDr, v0_refDir) == "INVERTED" ? #fb7185 : #94a3b8, text_size = size.small)
+    table.cell(v0Panel, 0, 18, "L11 Labels",     text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 18, f_v0_arr(v0_lblDir), text_color = f_v0_col(v0_lblDir), text_size = size.small)
+    table.cell(v0Panel, 2, 18, f_v0_stat(v0_lblDir, v0_refDir), text_color = f_v0_stat(v0_lblDir, v0_refDir) == "INVERTED" ? #fb7185 : #94a3b8, text_size = size.small)
+    table.cell(v0Panel, 0, 19, "L12 Objects",    text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(v0Panel, 1, 19, f_v0_arr(v0_objDir), text_color = f_v0_col(v0_objDir), text_size = size.small)
+    table.cell(v0Panel, 2, 19, f_v0_stat(v0_objDir, v0_refDir), text_color = f_v0_stat(v0_objDir, v0_refDir) == "INVERTED" ? #fb7185 : #94a3b8, text_size = size.small)
+
+// ── V0 integrity alert (diagnostic only — NOT a trade signal) ────────────────
+alertcondition(v0Alert and (v0_cIE1A or v0_cDest or v0_cFrz or v0_cOwn), "V0 Semantic Corruption", "V0: CRITICAL semantic / polarity corruption detected — verify meaning before trusting signals")
