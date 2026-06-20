@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v11", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v12", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -522,6 +522,9 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
     float _fzMid     = (not na(_ft) and not na(_fb)) ? (_ft + _fb) / 2.0 : na
     float _extr      = _wdir == 1 ? nz(_cycH, close) : nz(_cycL, close)
     float _retrFrac  = (not na(_fzMid) and math.abs(_extr - _fzMid) > 1e-10) ? math.abs(_extr - close) / math.abs(_extr - _fzMid) : 0.0
+    // The wave has travelled a real leg (≥1.5 ATR from origin to extreme) — used so a
+    // fresh extreme only counts as New High/Low once the move is meaningful.
+    bool  _extended  = not na(_inv) and math.abs(_extr - _inv) > _atr * 1.5
     // ── SINGLE coherent phase state machine (0 → 13) ─────────────────────────
     // One latch (_pst). NO parallel per-bar recompute. Monotonic within a cycle;
     // resets to 0 (Point 4 Origin) only on a CONFIRMED reversal (CHoCH / hard origin
@@ -539,30 +542,30 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
         // same bar the wave can compress e.g. 2→3→4→5 in one bar instead of crawling
         // one rung per candle. Order is still strictly enforced — every gate requires
         // its predecessor state — so no stage's evidence is skipped, only time is.
-        // EXPANSION FAMILY  0→1→2→3→4
+        // EXPANSION FAMILY  0→1→2→3→4 — these sub-textures only develop while the
+        // wave is CONSOLIDATING (i.e. NOT currently printing a fresh extreme).
         if _pst == 0 and _expanding
             _pst := 1
-        if _pst == 1 and _momDecaying and _physConvexDevel
+        if _pst == 1 and not _atExtreme and _momDecaying and _physConvexDevel
             _pst := 2
-        if _pst == 2 and _momCounter and _physTransfer
+        if _pst == 2 and not _atExtreme and _momCounter and _physTransfer
             _pst := 3
         // LIQUIDITY  3→4 : a liquidity grab — one opposing BOS (sweep) + transfer
-        if _pst == 3 and (_bos1 or _bos2) and _physTransfer
+        if _pst == 3 and not _atExtreme and (_bos1 or _bos2) and _physTransfer
             _pst := 4
-        // CREATION  →5 : the wave prints its cycle extreme on FADING momentum — the
-        // exhaustion high/low (the climax). Reachable from any expansion sub-stage
-        // (≥1) and MUST precede Absorption, so New High/Low is actually marked at the
-        // turn instead of being skipped.  (5 → 6 for bear, remapped below)
-        if (_pst >= 1 and _pst <= 4) and (_indBrk or (_atExtreme and not _momExpStrong))
+        // CREATION  →5 : a FRESH cycle extreme on a real leg (≥1.5 ATR) = New High/Low.
+        // Fires from ANY active stage (≥1), so genuine highs/lows are ALWAYS detected —
+        // including trend continuation, where a higher high RESCUES a wave that had
+        // already begun retracing, pulling it back to New High.  (5 → 6 for bear, below)
+        if _pst >= 1 and _atExtreme and _extended
             _pst := 5
-        // The DOWNSIDE lifecycle is driven by RETRACE DEPTH (_retrFrac: 0 at the
-        // extreme → 1 at the flip-zone mid).
-        // ABSORPTION  5→7 : price rolls over off the extreme, AFTER New High/Low.
-        if _pst == 5 and (_retrFrac > 0.12 or _momExhaust)
+        // DOWNSIDE lifecycle — engaged only once price LEAVES the extreme, driven by
+        // RETRACE DEPTH (_retrFrac: 0 at the extreme → 1 at the flip-zone mid).
+        // ABSORPTION  5→7 : price first rolls over off the New High/Low.
+        if _pst == 5 and not _atExtreme and (_retrFrac > 0.12 or _momExhaust)
             _pst := 7
-        // Fallback: a leg that retraces deeply (>40%) without a clean New High still
-        // resolves into the downside lifecycle.
-        if (_pst == 3 or _pst == 4) and _retrFrac > 0.40
+        // Fallback: a leg that never printed a clean New High but retraces deeply.
+        if (_pst == 3 or _pst == 4) and not _atExtreme and _retrFrac > 0.40
             _pst := 7
         // RETRACEMENT FAMILY  7→8→9→10→11 (depth-gated, physics as accelerant)
         if _pst == 7 and _retrFrac > 0.35
