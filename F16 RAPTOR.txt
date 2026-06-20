@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v20", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v21", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -2064,8 +2064,23 @@ if barstate.islast and showCurve
 if barstate.islast and showCurve
     var table stackT = na
     if na(stackT)
-        stackT := table.new(position.top_center, 2, 7, bgcolor = color.new(#0a0e27, 4), frame_color = color.new(#22d3ee, 25), frame_width = 2, border_width = 0)
+        stackT := table.new(position.top_center, 2, 8, bgcolor = color.new(#0a0e27, 4), frame_color = color.new(#22d3ee, 25), frame_width = 2, border_width = 0)
     string _ownerL = (nz(se240_wp) > 10 and nz(se240_wp) < 90) ? _wl6 : (nz(se60_wp) > 10 and nz(se60_wp) < 90) ? _wl5 : (nz(se15_wp) > 10 and nz(se15_wp) < 90) ? _wl4 : (nz(se5_wp) > 10 and nz(se5_wp) < 90) ? _wl3 : (nz(se3_wp) > 10 and nz(se3_wp) < 90) ? _wl2 : _wl1
+    // ── OWNERSHIP MERGE (Principle 9) — does the child curve respect the parent FU
+    //    and collapse back into it (Camp B → Camp A, parent campaign NOT finished),
+    //    or did it break the parent (genuine handoff → new campaign)? ─────────────
+    int    _childDir  = l0_dir
+    int    _parentDir = (l2_dir + l4_dir) != 0 ? ((l2_dir + l4_dir) > 0 ? 1 : -1) : l1_dir
+    bool   _counterChild = _childDir != 0 and _parentDir != 0 and _childDir != _parentDir
+    float  _pFlipTop  = math.max(nz(se60_ft, na), nz(se60_fb, na))
+    float  _pFlipBot  = math.min(nz(se60_ft, na), nz(se60_fb, na))
+    bool   _atParentFU = not na(_pFlipTop) and not na(_pFlipBot) and high >= _pFlipBot and low <= _pFlipTop
+    bool   _reactPar   = _parentDir == 1 ? (bullImpulse or close > open) : _parentDir == -1 ? (bearImpulse or close < open) : false
+    bool   _brokePar   = not na(_pFlipBot) and not na(_pFlipTop) and (_parentDir == 1 ? close < _pFlipBot : _parentDir == -1 ? close > _pFlipTop : false)
+    bool   _merged     = _counterChild and _atParentFU and _reactPar and not _brokePar
+    bool   _transferred = _counterChild and _brokePar
+    string _ownStateTx  = _transferred ? "TRANSFERRED · new campaign" : _merged ? "MERGED → parent (B→A)" : _counterChild ? "child recursion active" : "aligned with parent"
+    color  _ownStateCol = _transferred ? #fb7185 : _merged ? #34d399 : _counterChild ? #fbbf24 : #38bdf8
     table.cell(stackT, 0, 0, "◤ CURVE STACK ▌ " + _liveDot, text_color = #d7faff, text_size = size.normal, text_halign = text.align_left, bgcolor = color.new(#0c4a6e, 12))
     table.cell(stackT, 1, 0, "owns: " + _ownerL, text_color = #5eead4, text_size = size.normal, bgcolor = color.new(#0c4a6e, 12))
     table.cell(stackT, 0, 1, _wl6 + "  (parent)", text_color = c_r6.dir == 1 ? #34d399 : c_r6.dir == -1 ? #fb7185 : #94a3b8, text_size = size.small, text_halign = text.align_left)
@@ -2080,6 +2095,8 @@ if barstate.islast and showCurve
     table.cell(stackT, 1, 5, (c_r2.dir == 1 ? "▲ " : c_r2.dir == -1 ? "▼ " : "— ") + f_gauge(c_r2.maturity) + " " + str.tostring(math.round(c_r2.maturity)) + "%  cvx " + str.tostring(math.round(c_r2.convex)), text_color = #cbd5e1, text_size = size.small, text_halign = text.align_left)
     table.cell(stackT, 0, 6, _wl1 + "  (child)", text_color = c_r1.dir == 1 ? #34d399 : c_r1.dir == -1 ? #fb7185 : #94a3b8, text_size = size.small, text_halign = text.align_left)
     table.cell(stackT, 1, 6, (c_r1.dir == 1 ? "▲ " : c_r1.dir == -1 ? "▼ " : "— ") + f_gauge(c_r1.maturity) + " " + str.tostring(math.round(c_r1.maturity)) + "%  cvx " + str.tostring(math.round(c_r1.convex)), text_color = #cbd5e1, text_size = size.small, text_halign = text.align_left)
+    table.cell(stackT, 0, 7, "Ownership", text_color = #5fd0ff, text_size = size.small, text_halign = text.align_left)
+    table.cell(stackT, 1, 7, _ownStateTx, text_color = _ownStateCol, text_size = size.small, text_halign = text.align_left)
 
 // ── Alerts (global scope) ─────────────────────────────────────────────────────
 alertcondition(gAction == "ATTACK" and gMaster == 1,  "Senseei ATTACK Long",  "Master Senseei: ATTACK long")
