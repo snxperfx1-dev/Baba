@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v5", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v6", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -414,7 +414,13 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
     bool _hasCtx = _dir != 0 and not na(_ft)
     bool _flipDn = _dir == 1  and _bearCH
     bool _flipUp = _dir == -1 and _bullCH
-    bool _isRev  = (_eLong and _dir == -1) or (_eShort and _dir == 1) or _flipUp or _flipDn
+    // PERSISTENCE FIX (Class E): once a wave has context it NO LONGER reverses on a
+    // bare counter-impulse. It only respawns on a CONFIRMED reversal — a CHoCH
+    // against it (_flipUp/_flipDn) or a hard origin breach (close beyond the
+    // invalidation). This stops the phase machine dying on every pullback, so it
+    // can actually mature up the ladder (Induction → Liquidity → Creation → …).
+    bool _hardInv = _hasCtx and not na(_inv) and (_dir == 1 ? close < _inv : close > _inv)
+    bool _isRev  = _flipUp or _flipDn or _hardInv
     bool _spawn  = (_eLong or _eShort or _flipUp or _flipDn) and (not _hasCtx or _isRev)
     if _spawn
         int   _nd   = _eLong ? 1 : _eShort ? -1 : _flipUp ? 1 : -1
@@ -505,42 +511,47 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
     bool  _expanding    = _momExpStrong or _eLong or _eShort or (_wdir == 1 ? _bullImp : _bearImp)
     // ── SINGLE coherent phase state machine (0 → 13) ─────────────────────────
     // One latch (_pst). NO parallel per-bar recompute. Monotonic within a cycle;
-    // resets to 0 (Point 4 Origin) on spawn / direction change and HOLDS Origin on
-    // the birth bar. Every transition is gated on the bar-start state (_pst0) so at
-    // most one step advances per bar — stages cannot be skipped and cannot
-    // oscillate. The ladder now reaches the full set, including New Low (6),
-    // Retracement Liquidity (11) and Demand/Supply Return (12/13).
+    // resets to 0 (Point 4 Origin) only on a CONFIRMED reversal (CHoCH / hard origin
+    // breach) and HOLDS Origin on the birth bar. The ladder is CUMULATIVE: stages
+    // advance in strict order but multiple rungs can clear on one bar when the
+    // evidence is already present — stages cannot be skipped or oscillate. The
+    // ladder reaches the full set, including New Low (6), Retracement Liquidity (11)
+    // and Demand/Supply Return (12/13).
     var int _pst = 0
     if _reset
         _pst := 0
-    int _pst0 = _pst
     if _dir != 0 and not _reset
+        // CUMULATIVE LADDER (Class E fix): each gate tests the LIVE _pst (sequential
+        // `if`, not `else if`), so when several stages' evidence is present on the
+        // same bar the wave can compress e.g. 2→3→4→5 in one bar instead of crawling
+        // one rung per candle. Order is still strictly enforced — every gate requires
+        // its predecessor state — so no stage's evidence is skipped, only time is.
         // EXPANSION FAMILY  0→1→2→3→4
-        if _pst0 == 0 and _expanding
+        if _pst == 0 and _expanding
             _pst := 1
-        else if _pst0 == 1 and _momDecaying and _physConvexDevel
+        if _pst == 1 and _momDecaying and _physConvexDevel
             _pst := 2
-        else if _pst0 == 2 and _momCounter and _physTransfer
+        if _pst == 2 and _momCounter and _physTransfer
             _pst := 3
-        else if _pst0 == 3 and _bos2 and _physTransfer
+        if _pst == 3 and _bos2 and _physTransfer
             _pst := 4
         // CREATION  4→5  (5 → 6 for bear, remapped below)
-        else if _pst0 == 4 and _indBrk and _momExpStrong
+        if _pst == 4 and _indBrk and _momExpStrong
             _pst := 5
         // ABSORPTION  5→7
-        else if _pst0 == 5 and _momExhaust and _physCapacityLow
+        if _pst == 5 and _momExhaust and _physCapacityLow
             _pst := 7
         // RETRACEMENT FAMILY  7→8→9→10→11
-        else if _pst0 == 7 and (_momCounter or _momDecaying)
+        if _pst == 7 and (_momCounter or _momDecaying)
             _pst := 8
-        else if _pst0 == 8 and _momDecaying and _physConvexDevel
+        if _pst == 8 and _momDecaying and _physConvexDevel
             _pst := 9
-        else if _pst0 == 9 and _physTransfer
+        if _pst == 9 and _physTransfer
             _pst := 10
-        else if _pst0 == 10 and _physCapacityLow
+        if _pst == 10 and _physCapacityLow
             _pst := 11
         // RETURN  11→12  (12 → 13 for bear, remapped below) — price back in the zone
-        else if _pst0 == 11 and _atFlip
+        if _pst == 11 and _atFlip
             _pst := 12
     // Emit the canonical code straight from the latch — no second phase map.
     int _phase = _pst
