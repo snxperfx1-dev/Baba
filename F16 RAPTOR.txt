@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v17", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v18", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -34,6 +34,7 @@ bool   showTF      = input.bool (true, "Show Wave & Timeframes panel (bottom-lef
 bool   showMatrix  = input.bool (true, "Show Wave Matrix panel (bottom-center)", group = GRP)
 bool   showCampaign = input.bool(true, "Show Campaign Ownership panel (F72, middle-left)", group = GRP)
 bool   showParticipants = input.bool(true, "Show Participant interference zones (0.618/0.70/0.786 + flip)", group = GRP)
+bool   showCurve   = input.bool(true, "Show Curve object — energy state (F72 foundation, middle-right)", group = GRP)
 int    minConf     = input.int  (55,  "Min confidence to ATTACK",     group = GRP, minval = 0, maxval = 100)
 int    pivLen      = input.int  (8,   "Wave pivot length",            group = GRP, minval = 2, maxval = 50)
 bool   showRegions = input.bool (true, "Show phase REGION labels",    group = GRP)
@@ -1332,6 +1333,31 @@ string tSeq = (not tH1Lt ? "take H1 low" : not tH1Ht ? "take H1 high" : "H1 done
 //    condition + regime straight from LETRA (phase · EDE · fractal stack) +
 //    Resolution + native conflict, so nothing here recalculates lower-engine logic.
 
+// ══════════════════════════════════════════════════════════════════════════════
+// F72 — THE CURVE OBJECT  (Axiom 0 foundation)
+//   A first-class energy/displacement entity, assembled from the f_phys primitives
+//   that already exist. Energy cannot travel straight forever → it displaces → a
+//   curve. Consequence layers (phases, campaign, participants) should read FROM this
+//   object rather than recomputing their own. This is the foundation stone.
+// ══════════════════════════════════════════════════════════════════════════════
+type Curve
+    int   dir      = 0
+    float origin   = na
+    float extreme  = na
+    float dispATR  = 0.0     // displacement achieved, in ATR units (energy → price)
+    float eIn      = 0.0     // expansion energy injected (0..100)
+    float eDiss    = 0.0     // energy dissipated (0..100)
+    float eRes     = 0.0     // energy remaining (0..100)
+    float convex   = 0.0     // curvature (0..100)
+    float compress = 0.0     // compression (0..100, high = tight)
+    float maturity = 0.0     // lifecycle progress (0..100)
+int    _cvDir  = displayWaveDir_M5
+float  _cvOrig = se5_inv
+float  _cvExt  = _cvDir == 1 ? nz(cycleHigh, high) : _cvDir == -1 ? nz(cycleLow, low) : close
+float  _cvDisp = not na(_cvOrig) ? math.abs(_cvExt - _cvOrig) / math.max(atr, 1e-10) : 0.0
+float  _cvComp = math.min(100.0, math.max(0.0, (1.0 - math.min(displacement / math.max(dispThresh, 1e-10), 1.0)) * 60.0 + (1.0 - math.min(efficiency / math.max(effThresh, 1e-10), 1.0)) * 40.0))
+Curve  gCurve  = Curve.new(_cvDir, _cvOrig, _cvExt, nz(_cvDisp, 0.0), nz(ede_expansionEnergy, 0.0), nz(ede_dissipatedEnergy, 0.0), nz(re_residualEnergyScore, 0.0), nz(convexityScore, 0.0), _cvComp, nz(waveProgress, 0.0))
+
 // ── Drawing objects + hoisted state for global alerts ────────────────────────
 var array<line>  net_lines = array.new<line>()
 var array<label> net_lbls  = array.new<label>()
@@ -1989,6 +2015,35 @@ if barstate.islast
         table.cell(campaign, 1, 8, _interfTx, text_color = _interfCol, text_size = size.small, text_halign = text.align_left)
         table.cell(campaign, 0, 9, _campaign == "TERMINAL" ? "⚠ ENTRY CYCLE — read convexity" : "● BUILDING — destination known", text_color = _campaign == "TERMINAL" ? #fbbf24 : #34d399, text_size = size.small, text_halign = text.align_left)
         table.cell(campaign, 1, 9, "", text_size = size.small)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// F72 — CURVE OBJECT readout (own islast block) — the energy state of the curve
+// ══════════════════════════════════════════════════════════════════════════════
+if barstate.islast and showCurve
+    var table curveT = na
+    if na(curveT)
+        curveT := table.new(position.middle_right, 2, 9, bgcolor = color.new(#0a0e27, 4), frame_color = color.new(#22d3ee, 25), frame_width = 2, border_width = 0)
+    string _cvDirTx = gCurve.dir == 1 ? "▲ BULL" : gCurve.dir == -1 ? "▼ BEAR" : "○ —"
+    string _cvSt    = gCurve.maturity < 25 ? "CHARGING" : gCurve.eRes > 55 ? "EXPANDING" : gCurve.maturity > 80 ? "TERMINAL" : gCurve.eDiss > 50 ? "DISSIPATING" : "TRANSFERRING"
+    color  _cvStCol = _cvSt == "EXPANDING" ? #34d399 : _cvSt == "CHARGING" ? #38bdf8 : _cvSt == "TERMINAL" ? #fb7185 : #fbbf24
+    table.cell(curveT, 0, 0, "◤ CURVE ▌ ENERGY " + _liveDot, text_color = #d7faff, text_size = size.normal, text_halign = text.align_left, bgcolor = color.new(#0c4a6e, 12))
+    table.cell(curveT, 1, 0, _cvDirTx + "  " + _cvSt, text_color = #06121f, text_size = size.normal, bgcolor = color.new(_cvStCol, 25))
+    table.cell(curveT, 0, 1, "Energy in", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 1, f_gauge(gCurve.eIn) + " " + str.tostring(math.round(gCurve.eIn)) + "%", text_color = #34d399, text_size = size.small)
+    table.cell(curveT, 0, 2, "Dissipated", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 2, f_gauge(gCurve.eDiss) + " " + str.tostring(math.round(gCurve.eDiss)) + "%", text_color = #fbbf24, text_size = size.small)
+    table.cell(curveT, 0, 3, "Residual", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 3, f_gauge(gCurve.eRes) + " " + str.tostring(math.round(gCurve.eRes)) + "%", text_color = gCurve.eRes > 50 ? #34d399 : #fb7185, text_size = size.small)
+    table.cell(curveT, 0, 4, "Displacement", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 4, str.tostring(math.round(gCurve.dispATR * 10) / 10) + " ATR", text_color = #e2e8f0, text_size = size.small)
+    table.cell(curveT, 0, 5, "Convexity", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 5, f_gauge(gCurve.convex) + " " + str.tostring(math.round(gCurve.convex)) + "%", text_color = #a78bfa, text_size = size.small)
+    table.cell(curveT, 0, 6, "Compression", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 6, f_gauge(gCurve.compress) + " " + str.tostring(math.round(gCurve.compress)) + "%", text_color = gCurve.compress >= 50 ? #fbbf24 : #34d399, text_size = size.small)
+    table.cell(curveT, 0, 7, "Maturity", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 7, f_gauge(gCurve.maturity) + " " + str.tostring(math.round(gCurve.maturity)) + "%", text_color = #e2e8f0, text_size = size.small)
+    table.cell(curveT, 0, 8, "energy can't travel straight → it curves", text_color = #5eead4, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 8, "", text_size = size.small)
 
 // ── Alerts (global scope) ─────────────────────────────────────────────────────
 alertcondition(gAction == "ATTACK" and gMaster == 1,  "Senseei ATTACK Long",  "Master Senseei: ATTACK long")
