@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v10", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v11", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -74,9 +74,13 @@ int    beliefSmooth   = input.int  (3,    "Belief EMA Smoothing",         group 
 //   mid rung above H1. _wtf* are simple strings (built from simple ?: over _csec),
 //   so request.security accepts them just like the old f_ltf().
 int    _csec = timeframe.in_seconds()
+// CANONICAL is now CHART-NATIVE: the on-chart phase regions (Engine 1A) read the
+// CHART's own timeframe, so M1 shows M1 structure, M15 shows M15 structure, H1 shows
+// H1 structure — instead of every intraday chart borrowing the fixed M5 wave. The
+// other five rungs still climb for multi-timeframe context. (_wtf3 == chart TF.)
+string _wtf3 = timeframe.period
 string _wtf1 = _csec < 3600 ? "1"   : _csec < 14400 ? "60"  : _csec < 86400 ? "240" : _csec < 604800 ? "D"  : "W"
 string _wtf2 = _csec < 3600 ? "3"   : _csec < 14400 ? "120" : _csec < 86400 ? "480" : _csec < 604800 ? "2D" : "2W"
-string _wtf3 = _csec < 3600 ? "5"   : _csec < 14400 ? "240" : _csec < 86400 ? "720" : _csec < 604800 ? "3D" : "M"
 string _wtf4 = _csec < 3600 ? "15"  : _csec < 14400 ? "480" : _csec < 86400 ? "D"   : _csec < 604800 ? "W"  : "3M"
 string _wtf5 = _csec < 3600 ? "60"  : _csec < 14400 ? "720" : _csec < 86400 ? "2D"  : _csec < 604800 ? "2W" : "6M"
 string _wtf6 = _csec < 3600 ? "240" : _csec < 14400 ? "D"   : _csec < 86400 ? "3D"  : _csec < 604800 ? "M"  : "12M"
