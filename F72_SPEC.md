@@ -267,3 +267,72 @@ is only implied.
 
 **If the curve object is right, everything above it follows. If it is wrong,
 nothing above it can be right.**
+
+
+---
+
+## CORRECTION — Recursive Curve Tree (the real engine, not panels)
+
+A hard, necessary distinction surfaced: **most of what was built are panels/readouts
+that express the model, not the engine that generates it.** Honest inventory of the
+current build:
+
+| Piece | What it actually is |
+|---|---|
+| `gCurve` / Curve UDT | real object (energy state) — **engine-ish** |
+| Curve Stack (M1..H4) | **panel** — and conceptually wrong (see below) |
+| Campaign ownership | **panel** (reads phase strings + curve) |
+| Participant zones | **panel** (geometry from the curve) |
+| Ownership-merge | **panel + heuristic** (geometric touch, not lifecycle) |
+| Phase machine (`f_se`) | **engine** — but linear, and it *owns* the labels |
+
+### Three things that are wrong
+1. **Recursion is EVENT-generated, not timeframe-generated.** A curve at a high
+   contains another curve inside it, inside another — *all on the same timeframe* —
+   each spawned by an event (Phase-2 CHoCH). It is NOT "M1 inside H1." The Curve
+   Stack (per-rung) is multi-timeframe context, not the recursion tree.
+2. **Ownership is an ENERGY / LIFECYCLE question, not a geometric touch.** A child
+   merges back into its parent when it *fails to complete its lifecycle* (induction
+   not exhausted, terminal liquidation not done, energy dissipated, parent energy
+   preserved). It *transfers* when it *completes* its lifecycle and breaks the
+   parent. Transfer ≠ "price broke a level." Transfer = lifecycle completion.
+3. **Phases must EMERGE from curves, not be a machine that labels them.** Curves own
+   phases. The phase/campaign/ownership "engines" should be emergent *properties of a
+   CurveNode*, not independent state machines.
+
+### The real missing object — `CurveNode` (a recursive tree)
+```
+CurveNode
+    id · parent · children[] · depth
+    dir · origin · extreme
+    energy · convexity · compression · maturity
+    state            // lifecycle, EMERGENT
+    interfaces       // FU / flip / S-D it interacts with
+    ownership        // dominant-energy flag
+    alive
+```
+- A node SPAWNS a child on an event (Phase-2 CHoCH against it).
+- Children are themselves complete curves (same lifecycle, opposite orientation).
+- **Compression** controls how many children appear, how fast, and whether they are
+  visible at all (wide → large loops; tight → failure swing + tiny loops).
+- **Ownership = the dominant-energy node** (Axiom 4). Merge/transfer are emergent
+  from energy + lifecycle completion, not from a touch test.
+- Phase / campaign / direction / narrative all DERIVE from the owning node.
+
+### Axioms (canonical)
+- **A0** Energy displaces → a curve.
+- **A1** Every curve has a lifecycle.
+- **A2** Every curve may spawn child curves (event-generated).
+- **A3** Compression determines recursion depth.
+- **A4** Ownership belongs to the dominant-energy curve.
+- **A5** Phases are descriptions of curve state — not independent machines.
+- **A6** Participants appear at energy interfaces (0.618/0.70/0.786, flip), not randomly.
+- **A7** Supply/demand are environments, not endpoints.
+- **A8** Induction is terminal behaviour approaching a higher-energy interface.
+- **A9** Transition is recursive, not linear.
+
+### Build implication
+The end state is a **Recursive Curve Tree Engine**: a live `array<CurveNode>` where
+phase, campaign, ownership are *emergent*, the existing phase machine becomes one
+emergent readout (eventually retired), and recursion depth is driven by events +
+compression — not timeframes, not a linear ladder.

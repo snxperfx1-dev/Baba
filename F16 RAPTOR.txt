@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v22", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v23", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -1370,6 +1370,75 @@ Curve c_r4 = f_rungCurve(l1_dir, se15_inv,  nz(se15_cm),  nz(se15_wp),  nz(se15_
 Curve c_r5 = f_rungCurve(l2_dir, se60_inv,  nz(se60_cm),  nz(se60_wp),  nz(se60_comp))
 Curve c_r6 = f_rungCurve(l4_dir, se240_inv, nz(se240_cm), nz(se240_wp), nz(se240_comp))
 
+// ══════════════════════════════════════════════════════════════════════════════
+// F72 — RECURSIVE CURVE TREE  (event-generated CurveNodes — the real engine seed)
+//   Recursion is EVENT-generated, not timeframe-generated: a Phase-2 CHoCH against
+//   the owning node spawns a CHILD curve (same lifecycle, opposite orientation).
+//   Ownership = the dominant-ENERGY node (Axiom 4). A child that keeps making
+//   progress GAINS energy and owns (→ transfer); one that stalls decays and dies
+//   (→ merge back into parent). FIRST-PASS: structure is solid; energy dynamics are
+//   a calibratable heuristic. Additive — not yet wired to the phase labels.
+// ══════════════════════════════════════════════════════════════════════════════
+type CurveNode
+    int   id      = 0
+    int   parent  = -1
+    int   dir     = 0
+    float origin  = na
+    float extreme = na
+    float energy  = 0.0
+    bool  alive   = true
+    int   depth   = 0
+var array<CurveNode> _tree = array.new<CurveNode>()
+var int _nodeSeq = 0
+// pre-owner (max-energy living node) — drives child-spawn direction
+int   _preOwn = -1
+float _preE   = -1.0
+if array.size(_tree) > 0
+    for _ti = 0 to array.size(_tree) - 1
+        CurveNode _tn = array.get(_tree, _ti)
+        if _tn.alive and _tn.energy > _preE
+            _preE := _tn.energy
+            _preOwn := _ti
+// seed the root curve once a wave exists
+if array.size(_tree) == 0 and displayWaveDir_M5 != 0 and not na(se5_inv)
+    _nodeSeq += 1
+    array.push(_tree, CurveNode.new(_nodeSeq, -1, displayWaveDir_M5, se5_inv, close, math.max(40.0, nz(ede_expansionEnergy, 60.0)), true, 0))
+// event-generated CHILD: a Phase-2 CHoCH against the owner spawns an inverse curve
+if _preOwn >= 0
+    CurveNode _po = array.get(_tree, _preOwn)
+    if (_po.dir == 1 and bearCHoCH) or (_po.dir == -1 and bullCHoCH)
+        _nodeSeq += 1
+        array.push(_tree, CurveNode.new(_nodeSeq, _po.id, -_po.dir, close, close, math.max(25.0, nz(ede_expansionEnergy, 50.0) * 0.85), true, _po.depth + 1))
+// update living nodes — energy rises on progress (continuation), decays when stalled
+if array.size(_tree) > 0
+    for _ti = 0 to array.size(_tree) - 1
+        CurveNode _tn = array.get(_tree, _ti)
+        if _tn.alive
+            bool _prog = _tn.dir == 1 ? high > nz(_tn.extreme, high) : low < nz(_tn.extreme, low)
+            _tn.extreme := _tn.dir == 1 ? math.max(nz(_tn.extreme, high), high) : math.min(nz(_tn.extreme, low), low)
+            _tn.energy  := _prog ? math.min(100.0, _tn.energy + 7.0) : math.max(0.0, _tn.energy - 3.5)
+            if _tn.energy <= 2.0
+                _tn.alive := false
+while array.size(_tree) > 60
+    array.shift(_tree)
+// tree summary + final (emergent) owner = dominant-energy living node
+int   _treeAlive = 0
+int   _treeDepth = 0
+int   _ownF  = -1
+float _ownFE = -1.0
+if array.size(_tree) > 0
+    for _ti = 0 to array.size(_tree) - 1
+        CurveNode _tn = array.get(_tree, _ti)
+        if _tn.alive
+            _treeAlive += 1
+            _treeDepth := math.max(_treeDepth, _tn.depth)
+            if _tn.energy > _ownFE
+                _ownFE := _tn.energy
+                _ownF  := _ti
+int   _ownDirT   = _ownF >= 0 ? array.get(_tree, _ownF).dir    : 0
+int   _ownDepthT = _ownF >= 0 ? array.get(_tree, _ownF).depth  : 0
+float _ownNrgT   = _ownF >= 0 ? array.get(_tree, _ownF).energy : 0.0
+
 // ── Drawing objects + hoisted state for global alerts ────────────────────────
 var array<line>  net_lines = array.new<line>()
 var array<label> net_lbls  = array.new<label>()
@@ -2097,6 +2166,23 @@ if barstate.islast and showCurve
     table.cell(stackT, 1, 6, (c_r1.dir == 1 ? "▲ " : c_r1.dir == -1 ? "▼ " : "— ") + f_gauge(c_r1.maturity) + " " + str.tostring(math.round(c_r1.maturity)) + "%  cvx " + str.tostring(math.round(c_r1.convex)), text_color = #cbd5e1, text_size = size.small, text_halign = text.align_left)
     table.cell(stackT, 0, 7, "Ownership", text_color = #5fd0ff, text_size = size.small, text_halign = text.align_left)
     table.cell(stackT, 1, 7, _ownStateTx, text_color = _ownStateCol, text_size = size.small, text_halign = text.align_left)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// F72 — CURVE TREE readout (own islast block) — the event-generated recursion
+// ══════════════════════════════════════════════════════════════════════════════
+if barstate.islast and showCurve
+    var table treeT = na
+    if na(treeT)
+        treeT := table.new(position.middle_center, 2, 4, bgcolor = color.new(#0a0e27, 4), frame_color = color.new(#22d3ee, 25), frame_width = 2, border_width = 0)
+    string _odTx = _ownDirT == 1 ? "▲ BULL" : _ownDirT == -1 ? "▼ BEAR" : "○ —"
+    table.cell(treeT, 0, 0, "◤ CURVE TREE ▌ event-recursion " + _liveDot, text_color = #d7faff, text_size = size.normal, text_halign = text.align_left, bgcolor = color.new(#0c4a6e, 12))
+    table.cell(treeT, 1, 0, _odTx + "  d" + str.tostring(_ownDepthT), text_color = _ownDirT == 1 ? #34d399 : _ownDirT == -1 ? #fb7185 : #94a3b8, text_size = size.normal, bgcolor = color.new(#0c4a6e, 12))
+    table.cell(treeT, 0, 1, "Recursion depth (event)", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(treeT, 1, 1, str.tostring(_treeDepth), text_color = #c4b5fd, text_size = size.small)
+    table.cell(treeT, 0, 2, "Live curve nodes", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(treeT, 1, 2, str.tostring(_treeAlive), text_color = #e2e8f0, text_size = size.small)
+    table.cell(treeT, 0, 3, "Owner energy (dominant)", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(treeT, 1, 3, f_gauge(_ownNrgT) + " " + str.tostring(math.round(_ownNrgT)), text_color = _ownNrgT > 50 ? #34d399 : #fbbf24, text_size = size.small)
 
 // ── Alerts (global scope) ─────────────────────────────────────────────────────
 alertcondition(gAction == "ATTACK" and gMaster == 1,  "Senseei ATTACK Long",  "Master Senseei: ATTACK long")
