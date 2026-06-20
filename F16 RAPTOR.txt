@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v3", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v4", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -488,47 +488,71 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
     float _convScore = math.min(math.abs(_csm) / math.max(_atr * _convM, 1e-10) * 50.0, 100.0)
     float _expScore  = math.min(_eff / math.max(_effT, 1e-10) * 50.0 + _disp / math.max(_dispT, 1e-10) * 50.0, 100.0)
     float _absScore  = (_eff < _effT * 0.7 and math.abs(_vel) < math.abs(_vel[1]) * 0.6) ? 60.0 + _convScore * 0.4 : _convScore * 0.3
-    bool  _momExpStrong = _eff > _effT * 0.75 and (_dir == 1 ? _vel > 0 : _vel < 0)
-    bool  _momDecaying  = _dir == 1 ? _bullDec : _bearDec
-    bool  _momCounter   = _dir == 1 ? _bearImp : _bullImp
+    // PHASE-FIX (direction): the phase machine reasons with the SAME origin-based
+    // direction the chart displays — _wdir = sign(close - invalidation) — so the
+    // phase FAMILY (Expansion vs Retracement) and the New High/Low · Demand/Supply
+    // Return labels can never disagree with the wave-direction stack. Falls back to
+    // the spawn direction before _inv exists. _dirLabel is now literally _wdir.
+    int   _wdir = not na(_inv) ? (close > _inv ? 1 : close < _inv ? -1 : _dir) : _dir
+    bool  _momExpStrong = _eff > _effT * 0.75 and (_wdir == 1 ? _vel > 0 : _vel < 0)
+    bool  _momDecaying  = _wdir == 1 ? _bullDec : _bearDec
+    bool  _momCounter   = _wdir == 1 ? _bearImp : _bullImp
     bool  _momExhaust   = _eff < _effT * 0.65 and _absScore > 40.0
     bool  _physConvexDevel = _convScore > 35.0
     bool  _physTransfer    = _convScore > 48.0 or _absScore > 40.0
     bool  _physCapacityLow = _absScore > 45.0 or _eff < _effT * 0.6
-    var int _phaseState = 0
+    bool  _atFlip       = not na(_ft) and not na(_fb) and close <= _ft and close >= _fb
+    bool  _expanding    = _momExpStrong or _eLong or _eShort or (_wdir == 1 ? _bullImp : _bearImp)
+    // ── SINGLE coherent phase state machine (0 → 13) ─────────────────────────
+    // One latch (_ps). NO parallel per-bar recompute. Monotonic within a cycle;
+    // resets to 0 (Point 4 Origin) on spawn / direction change and HOLDS Origin on
+    // the birth bar. Every transition is gated on the bar-start state (_ps0) so at
+    // most one step advances per bar — stages cannot be skipped and cannot
+    // oscillate. The ladder now reaches the full set, including New Low (6),
+    // Retracement Liquidity (11) and Demand/Supply Return (12/13).
+    var int _ps = 0
     if _reset
-        _phaseState := 0
-    if _dir != 0
-        bool _expanding = _momExpStrong or _eLong or _eShort or (_dir == 1 ? _bullImp : _bearImp)
-        if _phaseState < 1 and _expanding and not _physTransfer and not _physCapacityLow
-            _phaseState := 1
-        if _phaseState < 2 and _bos1 and _momDecaying and _physConvexDevel
-            _phaseState := 2
-        if _phaseState < 3 and _bos1 and _momCounter and _physTransfer
-            _phaseState := 3
-        if _phaseState < 4 and _bos2 and (_momDecaying or _momCounter) and _physTransfer
-            _phaseState := 4
-        if _phaseState < 5 and _indBrk and _momExpStrong and not _physCapacityLow
-            _phaseState := 5
-        if _phaseState >= 5 and _momExhaust and _physCapacityLow
-            _phaseState := 7
-        if _phaseState >= 5 and _momCounter and not _momExhaust and _physTransfer
-            _phaseState := 8
-    int _phase = _phaseState
-    if _dir != 0
-        _phase := _momExhaust and _physCapacityLow ? 7 :
-                  _momCounter and _physTransfer    ? (_phaseState >= 5 ? (_convScore > 40.0 ? 10 : _momDecaying ? 9 : 8) : (_bos2 ? 4 : 3)) :
-                  _momExpStrong ? (_phaseState >= 5 ? _phaseState : (_bos2 and _physTransfer) ? 4 : (_bos1 and _physConvexDevel) ? 2 : 1) :
-                  _momDecaying  ? (_phaseState >= 5 ? _phaseState : 4) :
-                  _phaseState == 0 ? 1 :
-                  _phaseState
-    if _phase == 5 and _dir == -1
+        _ps := 0
+    int _ps0 = _ps
+    if _dir != 0 and not _reset
+        // EXPANSION FAMILY  0→1→2→3→4
+        if _ps0 == 0 and _expanding
+            _ps := 1
+        else if _ps0 == 1 and _momDecaying and _physConvexDevel
+            _ps := 2
+        else if _ps0 == 2 and _momCounter and _physTransfer
+            _ps := 3
+        else if _ps0 == 3 and _bos2 and _physTransfer
+            _ps := 4
+        // CREATION  4→5  (5 → 6 for bear, remapped below)
+        else if _ps0 == 4 and _indBrk and _momExpStrong
+            _ps := 5
+        // ABSORPTION  5→7
+        else if _ps0 == 5 and _momExhaust and _physCapacityLow
+            _ps := 7
+        // RETRACEMENT FAMILY  7→8→9→10→11
+        else if _ps0 == 7 and (_momCounter or _momDecaying)
+            _ps := 8
+        else if _ps0 == 8 and _momDecaying and _physConvexDevel
+            _ps := 9
+        else if _ps0 == 9 and _physTransfer
+            _ps := 10
+        else if _ps0 == 10 and _physCapacityLow
+            _ps := 11
+        // RETURN  11→12  (12 → 13 for bear, remapped below) — price back in the zone
+        else if _ps0 == 11 and _atFlip
+            _ps := 12
+    // Emit the canonical code straight from the latch — no second phase map.
+    int _phase = _ps
+    if _phase == 5 and _wdir == -1
         _phase := 6
-    float _wp = _phaseState == 0 ? 10.0 : _phaseState == 1 ? 25.0 : _phaseState == 2 ? 40.0 : _phaseState == 3 ? 55.0 : _phaseState == 4 ? 68.0 : _phaseState == 5 ? 80.0 : _phaseState == 7 ? 92.0 : 85.0
+    if _phase == 12 and _wdir == -1
+        _phase := 13
+    float _wp = _ps == 0 ? 5.0 : _ps == 1 ? 18.0 : _ps == 2 ? 30.0 : _ps == 3 ? 42.0 : _ps == 4 ? 55.0 : _ps == 5 ? 68.0 : _ps == 7 ? 78.0 : _ps == 8 ? 84.0 : _ps == 9 ? 89.0 : _ps == 10 ? 93.0 : _ps == 11 ? 97.0 : 100.0
     float _cm = math.min(_convScore, 100.0)
     float _mf = math.min(math.max(_expScore, math.max(_absScore, _convScore)) * 0.70 + (_dir != 0 ? 30.0 : 0.0), 100.0)
     float _frzS = math.min((_eLong or _eShort ? 50.0 : 0.0) + _expScore * 0.30 + _convScore * 0.20, 100.0)
-    int _dirLabel = not na(_inv) ? (close > _inv ? 1 : close < _inv ? -1 : _dir) : _dir
+    int _dirLabel = _wdir
     [_dirLabel, _phase, _curSH, _curSL, _prSH, _prSL, _bosOut, _chOut, _p4h, _p4l, _inv, _tgt, _ft, _fb, _frzS, _wp, _cm, _mf]
 
 f_phaseStr(int _c) =>
@@ -1131,15 +1155,26 @@ if not na(atkT3Px) and (atkT3Px >= _atkRef ? high >= atkT3Px : low <= atkT3Px)
 //   authority string `currentDisplayPhase` — no second phase map anywhere.
 // ═══════════════════════════════════════════════════════════════════════════════
 f_regCol(string _p) =>
-     str.contains(_p, "Liquidation Wave") ? color.orange :
-     str.contains(_p, "Induction")        ? #fbbf24 :
-     str.contains(_p, "Pre-Convexity")    ? #38bdf8 :
-     str.contains(_p, "Liquidity")        ? #a78bfa :
-     str.contains(_p, "Absorption")       ? #fb7185 :
-     str.contains(_p, "New High")         ? #34d399 :
-     str.contains(_p, "New Low")          ? #fb7185 :
-     str.contains(_p, "Expansion")        ? #34d399 :
-     (str.contains(_p, "Demand Return") or str.contains(_p, "Supply Return")) ? #fbbf24 : #94a3b8
+     str.contains(_p, "Liquidation Wave")           ? color.orange :
+     // RETRACEMENT FAMILY (checked first — these all contain "Retracement") — WARM palette
+     str.contains(_p, "Retracement Liquidity")      ? #f59e0b :
+     str.contains(_p, "Retracement Induction")      ? #fb923c :
+     str.contains(_p, "Retracement Pre-Convexity")  ? #fdba74 :
+     str.contains(_p, "Retracement")                ? #fed7aa :
+     // RETURN — direction-distinct (Demand = bull/teal · Supply = bear/red)
+     str.contains(_p, "Demand Return")              ? #2dd4bf :
+     str.contains(_p, "Supply Return")              ? #f43f5e :
+     // CREATION
+     str.contains(_p, "New High")                   ? #34d399 :
+     str.contains(_p, "New Low")                    ? #fb7185 :
+     // ABSORPTION
+     str.contains(_p, "Absorption")                 ? #f472b6 :
+     // EXPANSION FAMILY — COOL palette (distinct shade per sub-phase)
+     str.contains(_p, "Expansion Liquidity")        ? #818cf8 :
+     str.contains(_p, "Expansion Induction")        ? #38bdf8 :
+     str.contains(_p, "Expansion Pre-Convexity")    ? #22d3ee :
+     str.contains(_p, "Expansion")                  ? #34d399 :
+     #94a3b8
 f_regTxt(string _p) => str.upper(str.replace_all(_p, " • ", "  —  "))
 
 var array<box>   _regBoxes = array.new<box>()
