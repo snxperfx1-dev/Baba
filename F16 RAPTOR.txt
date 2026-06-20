@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v21", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v22", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -576,7 +576,7 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
     float _mf = math.min(math.max(_expScore, math.max(_absScore, _convScore)) * 0.70 + (_dir != 0 ? 30.0 : 0.0), 100.0)
     float _frzS = math.min((_eLong or _eShort ? 50.0 : 0.0) + _expScore * 0.30 + _convScore * 0.20, 100.0)
     int _dirLabel = _wdir
-    [_dirLabel, _phase, _curSH, _curSL, _prSH, _prSL, _bosOut, _chOut, _p4h, _p4l, _inv, _tgt, _ft, _fb, _frzS, _wp, _cm, _mf]
+    [_dirLabel, _phase, _curSH, _curSL, _prSH, _prSL, _bosOut, _chOut, _p4h, _p4l, _inv, _tgt, _ft, _fb, _frzS, _wp, _cm, _mf, _compIdx, _recBrk, _recDom]
 
 f_phaseStr(int _c) =>
      _c == 1  ? "Expansion"               :
@@ -603,12 +603,12 @@ f_famS(int _ph) =>
 f_wv(int _d, string _f) => (_d == 1 ? "Bullish · " : _d == -1 ? "Bearish · " : "Neutral · ") + _f
 
 // Fixed-TF engine instances — one request.security per fixed timeframe.
-[se1_dir, se1_ph, se1_sh, se1_sl, se1_psh, se1_psl, se1_bos, se1_ch, se1_p4h, se1_p4l, se1_inv, se1_tgt, se1_ft, se1_fb, se1_fs, se1_wp, se1_cm, se1_mf] = request.security(syminfo.tickerid, _wtf1, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
-[se3_dir, se3_ph, se3_sh, se3_sl, se3_psh, se3_psl, se3_bos, se3_ch, se3_p4h, se3_p4l, se3_inv, se3_tgt, se3_ft, se3_fb, se3_fs, se3_wp, se3_cm, se3_mf] = request.security(syminfo.tickerid, _wtf2, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
-[se5_dir, se5_ph, se5_sh, se5_sl, se5_psh, se5_psl, se5_bos, se5_ch, se5_p4h, se5_p4l, se5_inv, se5_tgt, se5_ft, se5_fb, se5_fs, se5_wp, se5_cm, se5_mf] = request.security(syminfo.tickerid, _wtf3, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
-[se15_dir, se15_ph, se15_sh, se15_sl, se15_psh, se15_psl, se15_bos, se15_ch, se15_p4h, se15_p4l, se15_inv, se15_tgt, se15_ft, se15_fb, se15_fs, se15_wp, se15_cm, se15_mf] = request.security(syminfo.tickerid, _wtf4, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
-[se60_dir, se60_ph, se60_sh, se60_sl, se60_psh, se60_psl, se60_bos, se60_ch, se60_p4h, se60_p4l, se60_inv, se60_tgt, se60_ft, se60_fb, se60_fs, se60_wp, se60_cm, se60_mf] = request.security(syminfo.tickerid, _wtf5, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
-[se240_dir, se240_ph, se240_sh, se240_sl, se240_psh, se240_psl, se240_bos, se240_ch, se240_p4h, se240_p4l, se240_inv, se240_tgt, se240_ft, se240_fb, se240_fs, se240_wp, se240_cm, se240_mf] = request.security(syminfo.tickerid, _wtf6, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
+[se1_dir, se1_ph, se1_sh, se1_sl, se1_psh, se1_psl, se1_bos, se1_ch, se1_p4h, se1_p4l, se1_inv, se1_tgt, se1_ft, se1_fb, se1_fs, se1_wp, se1_cm, se1_mf, se1_comp, se1_rec, se1_dom] = request.security(syminfo.tickerid, _wtf1, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
+[se3_dir, se3_ph, se3_sh, se3_sl, se3_psh, se3_psl, se3_bos, se3_ch, se3_p4h, se3_p4l, se3_inv, se3_tgt, se3_ft, se3_fb, se3_fs, se3_wp, se3_cm, se3_mf, se3_comp, se3_rec, se3_dom] = request.security(syminfo.tickerid, _wtf2, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
+[se5_dir, se5_ph, se5_sh, se5_sl, se5_psh, se5_psl, se5_bos, se5_ch, se5_p4h, se5_p4l, se5_inv, se5_tgt, se5_ft, se5_fb, se5_fs, se5_wp, se5_cm, se5_mf, se5_comp, se5_rec, se5_dom] = request.security(syminfo.tickerid, _wtf3, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
+[se15_dir, se15_ph, se15_sh, se15_sl, se15_psh, se15_psl, se15_bos, se15_ch, se15_p4h, se15_p4l, se15_inv, se15_tgt, se15_ft, se15_fb, se15_fs, se15_wp, se15_cm, se15_mf, se15_comp, se15_rec, se15_dom] = request.security(syminfo.tickerid, _wtf4, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
+[se60_dir, se60_ph, se60_sh, se60_sl, se60_psh, se60_psl, se60_bos, se60_ch, se60_p4h, se60_p4l, se60_inv, se60_tgt, se60_ft, se60_fb, se60_fs, se60_wp, se60_cm, se60_mf, se60_comp, se60_rec, se60_dom] = request.security(syminfo.tickerid, _wtf5, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
+[se240_dir, se240_ph, se240_sh, se240_sl, se240_psh, se240_psl, se240_bos, se240_ch, se240_p4h, se240_p4l, se240_inv, se240_tgt, se240_ft, se240_fb, se240_fs, se240_wp, se240_cm, se240_mf, se240_comp, se240_rec, se240_dom] = request.security(syminfo.tickerid, _wtf6, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
 
 string l0_phaseCanon = f_phaseStr(int(nz(se5_ph)))
 f_waveDirByOrigin(float _origin, int _fallbackDir) => not na(_origin) ? (close > _origin ? 1 : close < _origin ? -1 : _fallbackDir) : _fallbackDir
@@ -1356,19 +1356,19 @@ float  _cvOrig = se5_inv
 float  _cvExt  = _cvDir == 1 ? nz(cycleHigh, high) : _cvDir == -1 ? nz(cycleLow, low) : close
 float  _cvDisp = not na(_cvOrig) ? math.abs(_cvExt - _cvOrig) / math.max(atr, 1e-10) : 0.0
 float  _cvComp = math.min(100.0, math.max(0.0, (1.0 - math.min(displacement / math.max(dispThresh, 1e-10), 1.0)) * 60.0 + (1.0 - math.min(efficiency / math.max(effThresh, 1e-10), 1.0)) * 40.0))
-Curve  gCurve  = Curve.new(_cvDir, _cvOrig, _cvExt, nz(_cvDisp, 0.0), nz(ede_expansionEnergy, 0.0), nz(ede_dissipatedEnergy, 0.0), nz(re_residualEnergyScore, 0.0), nz(convexityScore, 0.0), _cvComp, nz(waveProgress, 0.0))
+Curve  gCurve  = Curve.new(_cvDir, _cvOrig, _cvExt, nz(_cvDisp, 0.0), nz(ede_expansionEnergy, 0.0), nz(ede_dissipatedEnergy, 0.0), nz(re_residualEnergyScore, 0.0), nz(convexityScore, 0.0), nz(se5_comp, _cvComp), nz(waveProgress, 0.0))
 
 // Per-rung curve family — every timeframe rung carries its OWN Curve (curves inside
 // curves). c_r3 is the canonical/chart rung == the same wave promoted to gCurve.
 // Energy here is a maturity proxy per rung (full energy framework is canonical-only).
-f_rungCurve(int _d, float _o, float _cv, float _mat) =>
-    Curve.new(_d, _o, na, 0.0, 100.0, _mat, math.max(0.0, 100.0 - _mat), _cv, 0.0, _mat)
-Curve c_r1 = f_rungCurve(m1_dir, se1_inv,   nz(se1_cm),   nz(se1_wp))
-Curve c_r2 = f_rungCurve(l3_dir, se3_inv,   nz(se3_cm),   nz(se3_wp))
-Curve c_r3 = f_rungCurve(l0_dir, se5_inv,   nz(se5_cm),   nz(se5_wp))
-Curve c_r4 = f_rungCurve(l1_dir, se15_inv,  nz(se15_cm),  nz(se15_wp))
-Curve c_r5 = f_rungCurve(l2_dir, se60_inv,  nz(se60_cm),  nz(se60_wp))
-Curve c_r6 = f_rungCurve(l4_dir, se240_inv, nz(se240_cm), nz(se240_wp))
+f_rungCurve(int _d, float _o, float _cv, float _mat, float _cmp) =>
+    Curve.new(_d, _o, na, 0.0, 100.0, _mat, math.max(0.0, 100.0 - _mat), _cv, _cmp, _mat)
+Curve c_r1 = f_rungCurve(m1_dir, se1_inv,   nz(se1_cm),   nz(se1_wp),   nz(se1_comp))
+Curve c_r2 = f_rungCurve(l3_dir, se3_inv,   nz(se3_cm),   nz(se3_wp),   nz(se3_comp))
+Curve c_r3 = f_rungCurve(l0_dir, se5_inv,   nz(se5_cm),   nz(se5_wp),   nz(se5_comp))
+Curve c_r4 = f_rungCurve(l1_dir, se15_inv,  nz(se15_cm),  nz(se15_wp),  nz(se15_comp))
+Curve c_r5 = f_rungCurve(l2_dir, se60_inv,  nz(se60_cm),  nz(se60_wp),  nz(se60_comp))
+Curve c_r6 = f_rungCurve(l4_dir, se240_inv, nz(se240_cm), nz(se240_wp), nz(se240_comp))
 
 // ── Drawing objects + hoisted state for global alerts ────────────────────────
 var array<line>  net_lines = array.new<line>()
@@ -2018,7 +2018,7 @@ if barstate.islast
         table.cell(campaign, 0, 4, "Curve budget → HTF", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(campaign, 1, 4, na(_curveBudget) ? "—" : str.tostring(math.round(_curveBudget)) + "%  " + f_cpNode(_nextC), text_color = #e2e8f0, text_size = size.small)
         table.cell(campaign, 0, 5, "Recursive depth", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
-        table.cell(campaign, 1, 5, "exp " + str.tostring(_expDepth) + " / 4   obs " + str.tostring(entryCycle), text_color = #c4b5fd, text_size = size.small)
+        table.cell(campaign, 1, 5, "exp " + str.tostring(_expDepth) + " / 4   obs " + str.tostring(se5_rec) + "   dom " + str.tostring(math.round(se5_dom)) + "%", text_color = #c4b5fd, text_size = size.small)
         table.cell(campaign, 0, 6, "Transition maturity", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(campaign, 1, 6, str.tostring(math.round(waveProgress)) + "%", text_color = #e2e8f0, text_size = size.small)
         table.cell(campaign, 0, 7, "Participant zone", text_color = #5fd0ff, text_size = size.small, text_halign = text.align_left)
