@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v9", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v10", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -35,7 +35,7 @@ bool   showMatrix  = input.bool (true, "Show Wave Matrix panel (bottom-center)",
 int    minConf     = input.int  (55,  "Min confidence to ATTACK",     group = GRP, minval = 0, maxval = 100)
 int    pivLen      = input.int  (8,   "Wave pivot length",            group = GRP, minval = 2, maxval = 50)
 bool   showRegions = input.bool (true, "Show phase REGION labels",    group = GRP)
-int    regionConfirmBars = input.int(2, "Region confirm bars (debounce)", group = GRP, minval = 1, maxval = 10)
+int    regionConfirmBars = input.int(3, "Region confirm bars (debounce)", group = GRP, minval = 1, maxval = 10)
 
 // ── Letra engine inputs (exact f_phys / f_se parameters) ──────────────────────
 string GRPL = "Letra Engine (exact)"
@@ -572,11 +572,15 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
         // RETURN  11→12  (12 → 13 for bear, remapped below) — price back inside the zone
         if _pst == 11 and _atFlip
             _pst := 12
-    // Emit the canonical code straight from the latch — no second phase map.
+    // Emit the canonical code straight from the latch — no second phase map. The
+    // discrete direction labels (New High/Low · Demand/Supply Return) use the wave's
+    // COMMITTED direction _dir (stable — only flips on confirmed reversal), not the
+    // origin-instant _wdir, which flickers when price sits on the flip zone and was
+    // making Demand Return and Supply Return print on top of each other.
     int _phase = _pst
-    if _phase == 5 and _wdir == -1
+    if _phase == 5 and _dir == -1
         _phase := 6
-    if _phase == 12 and _wdir == -1
+    if _phase == 12 and _dir == -1
         _phase := 13
     float _wp = _pst == 0 ? 5.0 : _pst == 1 ? 18.0 : _pst == 2 ? 30.0 : _pst == 3 ? 42.0 : _pst == 4 ? 55.0 : _pst == 5 ? 68.0 : _pst == 7 ? 78.0 : _pst == 8 ? 84.0 : _pst == 9 ? 89.0 : _pst == 10 ? 93.0 : _pst == 11 ? 97.0 : 100.0
     float _cm = math.min(_convScore, 100.0)
