@@ -217,3 +217,53 @@ known, almost everything else is obvious.
 - Report **interference state**: *absorbed* (parent continues) vs *dominant*
   (recursive curve takes over → transition).
 - Treat the 0.618→flip→S/D span as a **living environment**, increasing in intensity.
+
+
+---
+
+## AXIOM 0 — THE CURVE IS THE FOUNDATION (read this first)
+
+Everything else in this spec is downstream of one axiom. If this is wrong, every
+layer above it is noise.
+
+### The axiom
+**Energy cannot move in a straight line forever — it must displace. Therefore, a
+curve.** That is the constant. The market is a *dissipative energy system*, and the
+curve is its fundamental shape. This is *why* the architecture is self-similar
+across every instrument and timeframe — you are not reading EURUSD or gold or
+NASDAQ, you are reading energy displacing. Different magnitude, identical geometry.
+
+### Everything else is a consequence, not a cause
+Fibonacci, sessions, ICT concepts, order blocks, FVGs, Wyckoff, participants, key
+times — **none of these are causes.** They are all consequences of energy
+displacing through a curve and interacting with other curves. The curve is the
+object; everything else is interaction with the object.
+
+### The task is STATE RECOGNITION, not prediction
+The edge was never "I know the next tick." It was: *identify the state of the
+system, and only certain futures remain physically possible.* Given Asia's internal
+structure + convexity + compression + where participants historically act, the set
+of available futures collapses. That is recognition of an energy state, not a
+forecast.
+
+### Engineering imperative (the foundation stone we never laid)
+The indicator has historically modelled the **consequences** (phases, flip zones,
+fib levels, nodes) but never the **curve itself as a first-class object**. That is
+the root crack: you cannot derive the consequences correctly from a foundation that
+is only implied.
+
+- **Represent the CURVE as the primitive:** an energy/displacement entity with a
+  measurable state (origin, energy in, displacement done, convexity, compression,
+  remaining capacity, dominance vs siblings/parent).
+- The raw materials **already exist** in `f_phys`: velocity, acceleration,
+  convexity, efficiency, displacement. They must be **assembled into the curve
+  object**, not skipped past into phase labels.
+- Then derive expansion / transition / retracement / induction / participants **from
+  the curve object**, as consequences — never as independent engines bolted on.
+- Compression and convexity of the curve determine how many child curves can exist
+  (recursion budget). Participants interact with the curve at its consequence points
+  (0.618/0.70/0.786, flip). Time and session behaviour are consequences of the
+  curve's state, not inputs to it.
+
+**If the curve object is right, everything above it follows. If it is wrong,
+nothing above it can be right.**
