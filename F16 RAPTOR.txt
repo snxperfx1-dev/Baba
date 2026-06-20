@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v7", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v8", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -545,24 +545,27 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
         // LIQUIDITY  3→4 : a liquidity grab — one opposing BOS (sweep) + transfer
         if _pst == 3 and (_bos1 or _bos2) and _physTransfer
             _pst := 4
-        // CREATION  4→5 : fresh cycle extreme reclaimed, OR inducement break, with
-        // expansion momentum  (5 → 6 for bear, remapped below)
-        if _pst == 4 and (_indBrk or _atExtreme) and _momExpStrong
+        // CREATION  4→5 : a fresh cycle extreme is made (or the inducement is
+        // reclaimed) — the wave's objective high/low  (5 → 6 for bear, remapped below)
+        if _pst == 4 and (_indBrk or _atExtreme)
             _pst := 5
-        // ABSORPTION  4/5→7 : momentum exhausts at / just after the extreme (covers
-        // the case where the leg tops at Liquidity without a textbook New High)
-        if (_pst == 4 or _pst == 5) and _momExhaust and _physCapacityLow
+        // The DOWNSIDE lifecycle is driven by RETRACE DEPTH (_retrFrac: 0 at the
+        // extreme → 1 at the flip-zone mid), so Absorption → Retracement → Return
+        // track what price actually does on the way back to origin. Reachable from any
+        // matured expansion stage (≥3) so a leg that tops early still resolves down.
+        // ABSORPTION  →7 : price just begins to roll over from the extreme
+        if (_pst >= 3 and _pst <= 5) and _retrFrac > 0.12 and (_momDecaying or _momExhaust or _momCounter)
             _pst := 7
-        // RETRACEMENT FAMILY  7→8→9→10→11
-        if _pst == 7 and (_retrFrac > 0.25 or _momCounter or _momDecaying)
+        // RETRACEMENT FAMILY  7→8→9→10→11 (depth-gated, physics as accelerant)
+        if _pst == 7 and _retrFrac > 0.35
             _pst := 8
-        if _pst == 8 and _momDecaying and _physConvexDevel
+        if _pst == 8 and (_retrFrac > 0.50 or (_momDecaying and _physConvexDevel))
             _pst := 9
-        if _pst == 9 and _physTransfer
+        if _pst == 9 and (_retrFrac > 0.65 or _physTransfer)
             _pst := 10
-        if _pst == 10 and _physCapacityLow
+        if _pst == 10 and (_retrFrac > 0.80 or _physCapacityLow)
             _pst := 11
-        // RETURN  11→12  (12 → 13 for bear, remapped below) — price back in the zone
+        // RETURN  11→12  (12 → 13 for bear, remapped below) — price back inside the zone
         if _pst == 11 and _atFlip
             _pst := 12
     // Emit the canonical code straight from the latch — no second phase map.
