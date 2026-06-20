@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v4", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v5", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -504,51 +504,51 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
     bool  _atFlip       = not na(_ft) and not na(_fb) and close <= _ft and close >= _fb
     bool  _expanding    = _momExpStrong or _eLong or _eShort or (_wdir == 1 ? _bullImp : _bearImp)
     // ── SINGLE coherent phase state machine (0 → 13) ─────────────────────────
-    // One latch (_ps). NO parallel per-bar recompute. Monotonic within a cycle;
+    // One latch (_pst). NO parallel per-bar recompute. Monotonic within a cycle;
     // resets to 0 (Point 4 Origin) on spawn / direction change and HOLDS Origin on
-    // the birth bar. Every transition is gated on the bar-start state (_ps0) so at
+    // the birth bar. Every transition is gated on the bar-start state (_pst0) so at
     // most one step advances per bar — stages cannot be skipped and cannot
     // oscillate. The ladder now reaches the full set, including New Low (6),
     // Retracement Liquidity (11) and Demand/Supply Return (12/13).
-    var int _ps = 0
+    var int _pst = 0
     if _reset
-        _ps := 0
-    int _ps0 = _ps
+        _pst := 0
+    int _pst0 = _pst
     if _dir != 0 and not _reset
         // EXPANSION FAMILY  0→1→2→3→4
-        if _ps0 == 0 and _expanding
-            _ps := 1
-        else if _ps0 == 1 and _momDecaying and _physConvexDevel
-            _ps := 2
-        else if _ps0 == 2 and _momCounter and _physTransfer
-            _ps := 3
-        else if _ps0 == 3 and _bos2 and _physTransfer
-            _ps := 4
+        if _pst0 == 0 and _expanding
+            _pst := 1
+        else if _pst0 == 1 and _momDecaying and _physConvexDevel
+            _pst := 2
+        else if _pst0 == 2 and _momCounter and _physTransfer
+            _pst := 3
+        else if _pst0 == 3 and _bos2 and _physTransfer
+            _pst := 4
         // CREATION  4→5  (5 → 6 for bear, remapped below)
-        else if _ps0 == 4 and _indBrk and _momExpStrong
-            _ps := 5
+        else if _pst0 == 4 and _indBrk and _momExpStrong
+            _pst := 5
         // ABSORPTION  5→7
-        else if _ps0 == 5 and _momExhaust and _physCapacityLow
-            _ps := 7
+        else if _pst0 == 5 and _momExhaust and _physCapacityLow
+            _pst := 7
         // RETRACEMENT FAMILY  7→8→9→10→11
-        else if _ps0 == 7 and (_momCounter or _momDecaying)
-            _ps := 8
-        else if _ps0 == 8 and _momDecaying and _physConvexDevel
-            _ps := 9
-        else if _ps0 == 9 and _physTransfer
-            _ps := 10
-        else if _ps0 == 10 and _physCapacityLow
-            _ps := 11
+        else if _pst0 == 7 and (_momCounter or _momDecaying)
+            _pst := 8
+        else if _pst0 == 8 and _momDecaying and _physConvexDevel
+            _pst := 9
+        else if _pst0 == 9 and _physTransfer
+            _pst := 10
+        else if _pst0 == 10 and _physCapacityLow
+            _pst := 11
         // RETURN  11→12  (12 → 13 for bear, remapped below) — price back in the zone
-        else if _ps0 == 11 and _atFlip
-            _ps := 12
+        else if _pst0 == 11 and _atFlip
+            _pst := 12
     // Emit the canonical code straight from the latch — no second phase map.
-    int _phase = _ps
+    int _phase = _pst
     if _phase == 5 and _wdir == -1
         _phase := 6
     if _phase == 12 and _wdir == -1
         _phase := 13
-    float _wp = _ps == 0 ? 5.0 : _ps == 1 ? 18.0 : _ps == 2 ? 30.0 : _ps == 3 ? 42.0 : _ps == 4 ? 55.0 : _ps == 5 ? 68.0 : _ps == 7 ? 78.0 : _ps == 8 ? 84.0 : _ps == 9 ? 89.0 : _ps == 10 ? 93.0 : _ps == 11 ? 97.0 : 100.0
+    float _wp = _pst == 0 ? 5.0 : _pst == 1 ? 18.0 : _pst == 2 ? 30.0 : _pst == 3 ? 42.0 : _pst == 4 ? 55.0 : _pst == 5 ? 68.0 : _pst == 7 ? 78.0 : _pst == 8 ? 84.0 : _pst == 9 ? 89.0 : _pst == 10 ? 93.0 : _pst == 11 ? 97.0 : 100.0
     float _cm = math.min(_convScore, 100.0)
     float _mf = math.min(math.max(_expScore, math.max(_absScore, _convScore)) * 0.70 + (_dir != 0 ? 30.0 : 0.0), 100.0)
     float _frzS = math.min((_eLong or _eShort ? 50.0 : 0.0) + _expScore * 0.30 + _convScore * 0.20, 100.0)
