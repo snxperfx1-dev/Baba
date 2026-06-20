@@ -151,3 +151,69 @@ fluid to capture ~95% of moves. Recursion timing is variable:
   **flip induction**, and anchor induction to the **lowest flip**.
 - Entry-cycle complexity is read from **convexity at S/D**, not a fixed sequence.
 - No session/time gating; allow minutes-to-~3h recursive completion.
+
+
+---
+
+## Architecture: THREE engines, not one phase machine
+
+The engine is not a linear phase machine. It is three concurrent engines whose
+*relationship* is the signal:
+
+### 1. Parent Curve Engine
+Tracks the dominant curve: Expansion → Trend → Approaching flip → Inside flip →
+Terminal. (This is the Campaign Ownership layer — Levels 1–2.)
+
+### 2. Recursive Curve Engine
+Tracks the inner curves: CHoCH, recursion depth, compression, failure swing, entry
+cycles. (Levels 3–4 + the recursive transition / dominance-transfer logic.)
+
+### 3. Participant Engine  ← the missing piece
+Tracks **where other participants begin interfering with the parent curve, and
+whether that interference has become dominant.** This is what the 2022 brain was
+really doing alongside curve-tracking — not counting phases, but watching *who is
+stepping in and whether they win*.
+
+## Participant Interference model
+Displacement does **not** happen randomly. It happens where participants are
+programmed to respond. On the retracement of the parent curve:
+
+```
+Expansion
+  ↓
+0.618  ← participants begin appearing (first displacement)
+0.70   ← more interference
+0.786  ← heavy interference
+  ↓
+FU FLIP ZONE  ← TRUE induction (the lowest flip)
+  ↓
+Liquidation → Supply/Demand
+```
+
+- **61.8 / 70 / 78.6 are not where the curve ends — they are where interference
+  BEGINS.** Expect displacement (fib traders, mean-reversion, VWAP, liquidity algos,
+  order-flow, discretionary) but this is *manipulation*, not the main induction.
+- The market becomes **progressively more alive** from 0.618 → flip → S/D.
+- Each displacement is itself a complete curve (Origin/Expansion/Transition/New
+  High/CHoCH/Recursion) — which is *why* markets look fractal.
+- The key per-displacement question: **did this displacement complete (price
+  continues) or did the recursive curve become dominant (interference wins → the
+  curve turns)?**
+
+## The reframed core question
+Not "what phase?" Not "bull or bear?" but:
+
+> **Where are participants beginning to interfere with the parent curve, and has
+> that interference become dominant?**
+
+Track **curve dominance** and **participant interference** simultaneously. Once
+known, almost everything else is obvious.
+
+### Implementation implications
+- Compute the parent curve's **0.618 / 0.70 / 0.786** retracement band as
+  participant/manipulation zones (distinct from the flip).
+- Flag **displacement / engagement** when price reacts inside those zones.
+- Anchor **true induction to the lowest flip**, not the fibs.
+- Report **interference state**: *absorbed* (parent continues) vs *dominant*
+  (recursive curve takes over → transition).
+- Treat the 0.618→flip→S/D span as a **living environment**, increasing in intensity.
