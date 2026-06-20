@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v6", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v7", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -509,6 +509,15 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
     bool  _physCapacityLow = _absScore > 45.0 or _eff < _effT * 0.6
     bool  _atFlip       = not na(_ft) and not na(_fb) and close <= _ft and close >= _fb
     bool  _expanding    = _momExpStrong or _eLong or _eShort or (_wdir == 1 ? _bullImp : _bearImp)
+    // Price-structure signals for the upper ladder (so Creation/Absorption/Return
+    // are driven by what price actually DOES, not only the rare double-BOS pattern):
+    //  _atExtreme = this bar prints a fresh cycle extreme in the wave direction
+    //  _retrFrac  = how far price has pulled back from that extreme toward the flip
+    //               zone (0 at the extreme · 1 at the zone mid)
+    bool  _atExtreme = _wdir == 1 ? high >= nz(_cycH, high) : _wdir == -1 ? low <= nz(_cycL, low) : false
+    float _fzMid     = (not na(_ft) and not na(_fb)) ? (_ft + _fb) / 2.0 : na
+    float _extr      = _wdir == 1 ? nz(_cycH, close) : nz(_cycL, close)
+    float _retrFrac  = (not na(_fzMid) and math.abs(_extr - _fzMid) > 1e-10) ? math.abs(_extr - close) / math.abs(_extr - _fzMid) : 0.0
     // ── SINGLE coherent phase state machine (0 → 13) ─────────────────────────
     // One latch (_pst). NO parallel per-bar recompute. Monotonic within a cycle;
     // resets to 0 (Point 4 Origin) only on a CONFIRMED reversal (CHoCH / hard origin
@@ -533,16 +542,19 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
             _pst := 2
         if _pst == 2 and _momCounter and _physTransfer
             _pst := 3
-        if _pst == 3 and _bos2 and _physTransfer
+        // LIQUIDITY  3→4 : a liquidity grab — one opposing BOS (sweep) + transfer
+        if _pst == 3 and (_bos1 or _bos2) and _physTransfer
             _pst := 4
-        // CREATION  4→5  (5 → 6 for bear, remapped below)
-        if _pst == 4 and _indBrk and _momExpStrong
+        // CREATION  4→5 : fresh cycle extreme reclaimed, OR inducement break, with
+        // expansion momentum  (5 → 6 for bear, remapped below)
+        if _pst == 4 and (_indBrk or _atExtreme) and _momExpStrong
             _pst := 5
-        // ABSORPTION  5→7
-        if _pst == 5 and _momExhaust and _physCapacityLow
+        // ABSORPTION  4/5→7 : momentum exhausts at / just after the extreme (covers
+        // the case where the leg tops at Liquidity without a textbook New High)
+        if (_pst == 4 or _pst == 5) and _momExhaust and _physCapacityLow
             _pst := 7
         // RETRACEMENT FAMILY  7→8→9→10→11
-        if _pst == 7 and (_momCounter or _momDecaying)
+        if _pst == 7 and (_retrFrac > 0.25 or _momCounter or _momDecaying)
             _pst := 8
         if _pst == 8 and _momDecaying and _physConvexDevel
             _pst := 9
