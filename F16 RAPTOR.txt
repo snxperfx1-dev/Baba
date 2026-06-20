@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v23", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -32,6 +32,9 @@ bool   showHUD     = input.bool (true, "Plot HUD on chart (flight plan · target
 bool   showVerdict = input.bool (true, "Show verdict label",          group = GRP)
 bool   showTF      = input.bool (true, "Show Wave & Timeframes panel (bottom-left)", group = GRP)
 bool   showMatrix  = input.bool (true, "Show Wave Matrix panel (bottom-center)", group = GRP)
+bool   showCampaign = input.bool(true, "Show Campaign Ownership panel (F72, middle-left)", group = GRP)
+bool   showParticipants = input.bool(true, "Show Participant interference zones (0.618/0.70/0.786 + flip)", group = GRP)
+bool   showCurve   = input.bool(true, "Show Curve object — energy state (F72 foundation, middle-right)", group = GRP)
 int    minConf     = input.int  (55,  "Min confidence to ATTACK",     group = GRP, minval = 0, maxval = 100)
 int    pivLen      = input.int  (8,   "Wave pivot length",            group = GRP, minval = 2, maxval = 50)
 bool   showRegions = input.bool (true, "Show phase REGION labels",    group = GRP)
@@ -59,6 +62,35 @@ float  liqAgDecay     = input.float(0.95, "Liquidity Age Decay",          group 
 bool   requireLiqSweep = input.bool(true, "Require Liquidity Sweep",      group = GRPL)
 int    resetBars      = input.int  (20,   "Min Bars Before Reset",        group = GRPL, minval = 5)
 int    beliefSmooth   = input.int  (3,    "Belief EMA Smoothing",         group = GRPL, minval = 1, maxval = 10)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADAPTIVE WAVE-TIMEFRAME LADDER  (H1+ fix)
+//   The six wave engines run on a FIXED intraday ladder (M1·M3·M5·M15·H1·H4) on
+//   any chart at or below H1, so the intraday read is byte-for-byte unchanged.
+//   ABOVE H1 that ladder used to clamp every rung to the chart timeframe (a memory
+//   guard against processing sub-chart data over deep history) — which made all six
+//   engines identical, so the stack collapsed and the fractal score pinned at 100%.
+//   Instead the ladder now CLIMBS above H1: it anchors at the chart timeframe and
+//   steps upward through the standard timeframes, keeping all six rungs distinct and
+//   ≥ the chart (no collapse, and no deep sub-chart history → no memory error).
+//   Canonical wave (se5 / Engine 1A) stays rung-3: M5 intraday, the chart-relative
+//   mid rung above H1. _wtf* are simple strings (built from simple ?: over _csec),
+//   so request.security accepts them just like the old f_ltf().
+int    _csec = timeframe.in_seconds()
+string _wtf1 = _csec < 3600 ? "1"   : _csec < 14400 ? "60"  : _csec < 86400 ? "240" : _csec < 604800 ? "D"  : "W"
+string _wtf2 = _csec < 3600 ? "3"   : _csec < 14400 ? "120" : _csec < 86400 ? "480" : _csec < 604800 ? "2D" : "2W"
+string _wtf3 = timeframe.period
+string _wtf4 = _csec < 3600 ? "15"  : _csec < 14400 ? "480" : _csec < 86400 ? "D"   : _csec < 604800 ? "W"  : "3M"
+string _wtf5 = _csec < 3600 ? "60"  : _csec < 14400 ? "720" : _csec < 86400 ? "2D"  : _csec < 604800 ? "2W" : "6M"
+string _wtf6 = _csec < 3600 ? "240" : _csec < 14400 ? "D"   : _csec < 86400 ? "3D"  : _csec < 604800 ? "M"  : "12M"
+f_tfLabel(simple string _tf) =>
+    _tf == "1" ? "M1" : _tf == "3" ? "M3" : _tf == "5" ? "M5" : _tf == "15" ? "M15" : _tf == "30" ? "M30" : _tf == "60" ? "H1" : _tf == "120" ? "H2" : _tf == "240" ? "H4" : _tf == "480" ? "H8" : _tf == "720" ? "H12" : _tf == "D" ? "D" : _tf == "2D" ? "2D" : _tf == "3D" ? "3D" : _tf == "W" ? "W" : _tf == "2W" ? "2W" : _tf == "M" ? "MN" : _tf == "3M" ? "3M" : _tf == "6M" ? "6M" : _tf == "12M" ? "12M" : _tf
+string _wl1 = f_tfLabel(_wtf1)
+string _wl2 = f_tfLabel(_wtf2)
+string _wl3 = f_tfLabel(_wtf3)
+string _wl4 = f_tfLabel(_wtf4)
+string _wl5 = f_tfLabel(_wtf5)
+string _wl6 = f_tfLabel(_wtf6)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PART A — INVISIBLE NETWORK ENGINE (embedded)
@@ -272,10 +304,10 @@ f_phys(simple int _atrL, simple int _effL, simple float _effT, simple float _dis
     bool  _vd50 = math.abs(_vel) < math.abs(_vel[1]) * 0.5
     [_atr, _vel, _acc, _cvx, _csm, _eff, _dsp, _bImp, _rImp, _bDec, _rDec, _bCS, _rCS, _vd70, _vd50]
 
-[atr, velocity, acceleration, convexity, convSmooth, efficiency, displacement, bullImpulse, bearImpulse, bullMomDecay, bearMomDecay, bullConvShift, bearConvShift, phys_vd70, phys_vd50] = request.security(syminfo.tickerid, f_ltf("5"), f_phys(atrLen, effLen, effThresh, dispThresh, convMult), lookahead = barmerge.lookahead_off)
+[atr, velocity, acceleration, convexity, convSmooth, efficiency, displacement, bullImpulse, bearImpulse, bullMomDecay, bearMomDecay, bullConvShift, bearConvShift, phys_vd70, phys_vd50] = request.security(syminfo.tickerid, _wtf3, f_phys(atrLen, effLen, effThresh, dispThresh, convMult), lookahead = barmerge.lookahead_off)
 // M5 high/low feed — so the wave's running cycle extreme (and thus waveProgress)
 // is measured on the fixed M5 wave, not the chart's bars.
-[m5Hi, m5Lo] = request.security(syminfo.tickerid, f_ltf("5"), [high, low], lookahead = barmerge.lookahead_off)
+[m5Hi, m5Lo] = request.security(syminfo.tickerid, _wtf3, [high, low], lookahead = barmerge.lookahead_off)
 
 // ── CHART-CONTEXT MARKET STRUCTURE (Section 4) — drives the lifecycle/spawn ────
 // ── CHART-CONTEXT pivot memory (Section 5) — order-block origin for the spawn.
@@ -389,8 +421,18 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
     bool _spawn  = (_eLong or _eShort or _flipUp or _flipDn) and (not _hasCtx or _isRev)
     if _spawn
         int   _nd   = _eLong ? 1 : _eShort ? -1 : _flipUp ? 1 : -1
-        float _obT  = _nd == 1 ? _lastP : _prevP
-        float _obB  = _nd == 1 ? _prevP : _lastP
+        // DIR-FIX: order the order-block by ACTUAL price, not by pivot recency.
+        // Impulse spawns (_eLong/_eShort) already arrive ordered (last=high / last=low
+        // by construction), so _hi/_lo reproduce the old values exactly. Flip/CHoCH
+        // spawns do NOT — the two most recent pivots can be in either order, which used
+        // to invert the box (_obT<_obB) and, worse, put _inv on the wrong side of price
+        // so close>_inv flipped the whole wave-direction stack. Invalidation is now
+        // pinned to the protective extreme: the zone LOW for longs, the zone HIGH for
+        // shorts — which is the only side a wave can be invalidated from.
+        float _hi   = math.max(_lastP, _prevP)
+        float _lo   = math.min(_lastP, _prevP)
+        float _obT  = _hi
+        float _obB  = _lo
         _dir := _nd
         _ft  := _obT
         _fb  := _obB
@@ -398,7 +440,7 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
         _p4l := _obB
         _cycH := high
         _cycL := low
-        _inv := _nd == 1 ? _obB : _obT
+        _inv := _nd == 1 ? _lo : _hi
         float _rng = not na(_prSH) and not na(_prSL) ? math.abs(_prSH - _prSL) : _atr * 5.0
         _tgt := _nd == 1 ? nz(_obT, close) + _rng : nz(_obB, close) - _rng
     if _dir == 1
@@ -456,72 +498,117 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
     bool  _physConvexDevel = _convScore > 35.0
     bool  _physTransfer    = _convScore > 48.0 or _absScore > 40.0
     bool  _physCapacityLow = _absScore > 45.0 or _eff < _effT * 0.6
-    var int _phaseState = 0
+    // ── DIRECTION (origin-based, matches the displayed wave direction) ───────────
+    int   _wdir      = not na(_inv) ? (close > _inv ? 1 : close < _inv ? -1 : _dir) : _dir
+    bool  _atFlip    = not na(_ft) and not na(_fb) and close <= _ft and close >= _fb
+    bool  _expanding = _momExpStrong or _eLong or _eShort or (_wdir == 1 ? _bullImp : _bearImp)
+    bool  _atExtreme = _wdir == 1 ? high >= nz(_cycH, high) : _wdir == -1 ? low <= nz(_cycL, low) : false
+    float _extr      = _wdir == 1 ? nz(_cycH, close) : nz(_cycL, close)
+    bool  _extended  = not na(_inv) and math.abs(_extr - _inv) > _atr * 1.5
+    float _fzMid     = (not na(_ft) and not na(_fb)) ? (_ft + _fb) / 2.0 : na
+    float _retrFrac  = (not na(_fzMid) and math.abs(_extr - _fzMid) > 1e-10) ? math.abs(_extr - close) / math.abs(_extr - _fzMid) : 0.0
+    // COMPRESSION INDEX (0..100) — high when displacement & efficiency are LOW (tight curves)
+    float _compIdx   = math.min(100.0, math.max(0.0, (1.0 - math.min(_disp / math.max(_dispT, 1e-10), 1.0)) * 60.0 + (1.0 - math.min(_eff / math.max(_effT, 1e-10), 1.0)) * 40.0))
+    // ── RECURSIVE TRANSITION — count Phase-2 CHoCHs after the extreme, each armed by
+    //    an intervening pullback pivot; a fresh extreme restarts the count. ─────────
+    bool _phase2CH = (_dir == 1 and _bearCH) or (_dir == -1 and _bullCH)
+    var int  _recBrk = 0
+    var bool _recArm = true
+    if _reset or (_atExtreme and _extended)
+        _recBrk := 0
+        _recArm := true
+    if (_dir == 1 and not na(_pH)) or (_dir == -1 and not na(_pL))
+        _recArm := true
+    if (_phase2CH or _oppBOS) and _recArm and not _atExtreme
+        _recBrk := _recBrk + 1
+        _recArm := false
+    // DOMINANCE TRANSFER — recursive wave's share of control (completes at 50%). Low
+    // compression transfers via one deep curve; high compression via many small
+    // recursions (each recursion is worth less when compression is high).
+    float _recDom = math.min(100.0, math.max(_recBrk * (30.0 - _compIdx * 0.15), _retrFrac * 80.0))
+    bool  _transferDone = _recDom >= 50.0
+    // ── SINGLE-LATCH PHASE STATE MACHINE (0 → 14) ───────────────────────────────
+    var int _pst = 0
     if _reset
-        _phaseState := 0
-    if _dir != 0
-        bool _expanding = _momExpStrong or _eLong or _eShort or (_dir == 1 ? _bullImp : _bearImp)
-        if _phaseState < 1 and _expanding and not _physTransfer and not _physCapacityLow
-            _phaseState := 1
-        if _phaseState < 2 and _bos1 and _momDecaying and _physConvexDevel
-            _phaseState := 2
-        if _phaseState < 3 and _bos1 and _momCounter and _physTransfer
-            _phaseState := 3
-        if _phaseState < 4 and _bos2 and (_momDecaying or _momCounter) and _physTransfer
-            _phaseState := 4
-        if _phaseState < 5 and _indBrk and _momExpStrong and not _physCapacityLow
-            _phaseState := 5
-        if _phaseState >= 5 and _momExhaust and _physCapacityLow
-            _phaseState := 7
-        if _phaseState >= 5 and _momCounter and not _momExhaust and _physTransfer
-            _phaseState := 8
-    int _phase = _phaseState
-    if _dir != 0
-        _phase := _momExhaust and _physCapacityLow ? 7 :
-                  _momCounter and _physTransfer    ? (_phaseState >= 5 ? (_convScore > 40.0 ? 10 : _momDecaying ? 9 : 8) : (_bos2 ? 4 : 3)) :
-                  _momExpStrong ? (_phaseState >= 5 ? _phaseState : (_bos2 and _physTransfer) ? 4 : (_bos1 and _physConvexDevel) ? 2 : 1) :
-                  _momDecaying  ? (_phaseState >= 5 ? _phaseState : 4) :
-                  _phaseState == 0 ? 1 :
-                  _phaseState
+        _pst := 0
+    if _dir != 0 and not _reset
+        // EXPANSION family — sub-textures only develop while CONSOLIDATING
+        if _pst == 0 and _expanding
+            _pst := 1
+        if _pst == 1 and not _atExtreme and _momDecaying and _physConvexDevel
+            _pst := 2
+        if _pst == 2 and not _atExtreme and _momCounter and _physTransfer
+            _pst := 3
+        if _pst == 3 and not _atExtreme and (_bos1 or _bos2 or _indBrk) and _physTransfer
+            _pst := 4
+        // CREATION — a fresh cycle extreme on a real leg (≥1.5 ATR). From any stage ≤7,
+        // so a higher high mid-transition RESCUES back to New High (trend continuation).
+        if _pst >= 1 and _pst <= 7 and _atExtreme and _extended
+            _pst := 5
+        // TRANSITION — begins on the first Phase-2 CHoCH (or exhaustion) after the high.
+        if _pst == 5 and not _atExtreme and (_recBrk >= 1 or _momExhaust)
+            _pst := 7
+        // RETRACEMENT — only once DOMINANCE TRANSFER completes (recursive wave > old).
+        if _pst == 7 and _transferDone
+            _pst := 8
+        // HTF FLIP ZONE — the retracement reaches the flip-zone terminal area.
+        if _pst == 8 and _atFlip
+            _pst := 9
+        // INDUCTION — counter-trend (against the retracement) inside the zone.
+        if _pst == 9 and ((_dir == 1 and _bullImp) or (_dir == -1 and _bearImp))
+            _pst := 10
+        // LIQUIDATION — terminal liquidity move after the induction high.
+        if _pst == 10 and (_oppBOS or _physCapacityLow)
+            _pst := 11
+        // TERMINAL CURVE — the final strike that sweeps the supply/demand extreme.
+        if _pst == 11 and ((_dir == 1 and low < _fb) or (_dir == -1 and high > _ft))
+            _pst := 12
+        // RETURN — reversal confirmed out of the zone (Demand/Supply Return).
+        if _pst == 12 and ((_dir == 1 and _bullCH) or (_dir == -1 and _bearCH))
+            _pst := 13
+    int _phase = _pst
     if _phase == 5 and _dir == -1
         _phase := 6
-    float _wp = _phaseState == 0 ? 10.0 : _phaseState == 1 ? 25.0 : _phaseState == 2 ? 40.0 : _phaseState == 3 ? 55.0 : _phaseState == 4 ? 68.0 : _phaseState == 5 ? 80.0 : _phaseState == 7 ? 92.0 : 85.0
+    if _phase == 13 and _dir == -1
+        _phase := 14
+    float _wp = _pst == 0 ? 5.0 : _pst == 1 ? 15.0 : _pst == 2 ? 25.0 : _pst == 3 ? 33.0 : _pst == 4 ? 42.0 : _pst == 5 ? 55.0 : _pst == 7 ? 65.0 : _pst == 8 ? 75.0 : _pst == 9 ? 85.0 : _pst == 10 ? 90.0 : _pst == 11 ? 94.0 : _pst == 12 ? 97.0 : 100.0
     float _cm = math.min(_convScore, 100.0)
     float _mf = math.min(math.max(_expScore, math.max(_absScore, _convScore)) * 0.70 + (_dir != 0 ? 30.0 : 0.0), 100.0)
     float _frzS = math.min((_eLong or _eShort ? 50.0 : 0.0) + _expScore * 0.30 + _convScore * 0.20, 100.0)
-    int _dirLabel = not na(_inv) ? (close > _inv ? 1 : close < _inv ? -1 : _dir) : _dir
-    [_dirLabel, _phase, _curSH, _curSL, _prSH, _prSL, _bosOut, _chOut, _p4h, _p4l, _inv, _tgt, _ft, _fb, _frzS, _wp, _cm, _mf]
+    int _dirLabel = _wdir
+    [_dirLabel, _phase, _curSH, _curSL, _prSH, _prSL, _bosOut, _chOut, _p4h, _p4l, _inv, _tgt, _ft, _fb, _frzS, _wp, _cm, _mf, _compIdx, _recBrk, _recDom]
 
 f_phaseStr(int _c) =>
-     _c == 1  ? "Expansion"                 :
-     _c == 2  ? "Expansion Pre-Convexity"   :
-     _c == 3  ? "Expansion Induction"       :
-     _c == 4  ? "Expansion Liquidity"       :
-     _c == 5  ? "New High"                  :
-     _c == 6  ? "New Low"                   :
-     _c == 7  ? "Absorption"                :
-     _c == 8  ? "Retracement"               :
-     _c == 9  ? "Retracement Pre-Convexity" :
-     _c == 10 ? "Retracement Induction"     :
-     _c == 11 ? "Retracement Liquidity"     :
-     _c == 12 ? "Demand Return"             :
-     _c == 13 ? "Supply Return"             : "Point 4 Origin"
+     _c == 1  ? "Expansion"               :
+     _c == 2  ? "Expansion Pre-Convexity" :
+     _c == 3  ? "Expansion Induction"     :
+     _c == 4  ? "Expansion Liquidity"     :
+     _c == 5  ? "New High"                :
+     _c == 6  ? "New Low"                 :
+     _c == 7  ? "Transition"              :
+     _c == 8  ? "Retracement"             :
+     _c == 9  ? "HTF Flip Zone"           :
+     _c == 10 ? "Induction"               :
+     _c == 11 ? "Liquidation"             :
+     _c == 12 ? "Terminal Curve"          :
+     _c == 13 ? "Demand Return"           :
+     _c == 14 ? "Supply Return"           : "Point 4 Origin"
 
 // Short phase-family label for the multi-timeframe panels (reads f_phaseStr).
 f_famS(int _ph) =>
     string _p = f_phaseStr(_ph)
-    str.contains(_p, "Absorption") ? "Absorption" : str.contains(_p, "Pre-Convexity") ? "Pre-Conv" : str.contains(_p, "Induction") ? "Induction" : str.contains(_p, "Liquid") ? "Liquidation" : (str.contains(_p, "New High") or str.contains(_p, "New Low")) ? "Creation" : str.contains(_p, "Return") ? "Return" : str.contains(_p, "Retracement") ? "Retracement" : "Expansion"
+    str.contains(_p, "Transition") ? "Transition" : str.contains(_p, "Terminal") ? "Terminal" : str.contains(_p, "Liquidation") ? "Liquidation" : str.contains(_p, "HTF Flip") ? "Flip Zone" : (str.contains(_p, "Induction") and not str.contains(_p, "Expansion")) ? "Induction" : str.contains(_p, "Pre-Convexity") ? "Pre-Conv" : str.contains(_p, "Expansion Induction") ? "Induction" : str.contains(_p, "Liquidity") ? "Liquidity" : (str.contains(_p, "New High") or str.contains(_p, "New Low")) ? "Creation" : str.contains(_p, "Return") ? "Return" : str.contains(_p, "Retracement") ? "Retracement" : "Expansion"
 
 // Per-timeframe wave-narrative cell text (direction + phase family).
 f_wv(int _d, string _f) => (_d == 1 ? "Bullish · " : _d == -1 ? "Bearish · " : "Neutral · ") + _f
 
 // Fixed-TF engine instances — one request.security per fixed timeframe.
-[se1_dir, se1_ph, se1_sh, se1_sl, se1_psh, se1_psl, se1_bos, se1_ch, se1_p4h, se1_p4l, se1_inv, se1_tgt, se1_ft, se1_fb, se1_fs, se1_wp, se1_cm, se1_mf] = request.security(syminfo.tickerid, f_ltf("1"), f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
-[se3_dir, se3_ph, se3_sh, se3_sl, se3_psh, se3_psl, se3_bos, se3_ch, se3_p4h, se3_p4l, se3_inv, se3_tgt, se3_ft, se3_fb, se3_fs, se3_wp, se3_cm, se3_mf] = request.security(syminfo.tickerid, f_ltf("3"), f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
-[se5_dir, se5_ph, se5_sh, se5_sl, se5_psh, se5_psl, se5_bos, se5_ch, se5_p4h, se5_p4l, se5_inv, se5_tgt, se5_ft, se5_fb, se5_fs, se5_wp, se5_cm, se5_mf] = request.security(syminfo.tickerid, f_ltf("5"), f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
-[se15_dir, se15_ph, se15_sh, se15_sl, se15_psh, se15_psl, se15_bos, se15_ch, se15_p4h, se15_p4l, se15_inv, se15_tgt, se15_ft, se15_fb, se15_fs, se15_wp, se15_cm, se15_mf] = request.security(syminfo.tickerid, f_ltf("15"), f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
-[se60_dir, se60_ph, se60_sh, se60_sl, se60_psh, se60_psl, se60_bos, se60_ch, se60_p4h, se60_p4l, se60_inv, se60_tgt, se60_ft, se60_fb, se60_fs, se60_wp, se60_cm, se60_mf] = request.security(syminfo.tickerid, f_ltf("60"), f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
-[se240_dir, se240_ph, se240_sh, se240_sl, se240_psh, se240_psl, se240_bos, se240_ch, se240_p4h, se240_p4l, se240_inv, se240_tgt, se240_ft, se240_fb, se240_fs, se240_wp, se240_cm, se240_mf] = request.security(syminfo.tickerid, f_ltf("240"), f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
+[se1_dir, se1_ph, se1_sh, se1_sl, se1_psh, se1_psl, se1_bos, se1_ch, se1_p4h, se1_p4l, se1_inv, se1_tgt, se1_ft, se1_fb, se1_fs, se1_wp, se1_cm, se1_mf, se1_comp, se1_rec, se1_dom] = request.security(syminfo.tickerid, _wtf1, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
+[se3_dir, se3_ph, se3_sh, se3_sl, se3_psh, se3_psl, se3_bos, se3_ch, se3_p4h, se3_p4l, se3_inv, se3_tgt, se3_ft, se3_fb, se3_fs, se3_wp, se3_cm, se3_mf, se3_comp, se3_rec, se3_dom] = request.security(syminfo.tickerid, _wtf2, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
+[se5_dir, se5_ph, se5_sh, se5_sl, se5_psh, se5_psl, se5_bos, se5_ch, se5_p4h, se5_p4l, se5_inv, se5_tgt, se5_ft, se5_fb, se5_fs, se5_wp, se5_cm, se5_mf, se5_comp, se5_rec, se5_dom] = request.security(syminfo.tickerid, _wtf3, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
+[se15_dir, se15_ph, se15_sh, se15_sl, se15_psh, se15_psl, se15_bos, se15_ch, se15_p4h, se15_p4l, se15_inv, se15_tgt, se15_ft, se15_fb, se15_fs, se15_wp, se15_cm, se15_mf, se15_comp, se15_rec, se15_dom] = request.security(syminfo.tickerid, _wtf4, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
+[se60_dir, se60_ph, se60_sh, se60_sl, se60_psh, se60_psl, se60_bos, se60_ch, se60_p4h, se60_p4l, se60_inv, se60_tgt, se60_ft, se60_fb, se60_fs, se60_wp, se60_cm, se60_mf, se60_comp, se60_rec, se60_dom] = request.security(syminfo.tickerid, _wtf5, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
+[se240_dir, se240_ph, se240_sh, se240_sl, se240_psh, se240_psl, se240_bos, se240_ch, se240_p4h, se240_p4l, se240_inv, se240_tgt, se240_ft, se240_fb, se240_fs, se240_wp, se240_cm, se240_mf, se240_comp, se240_rec, se240_dom] = request.security(syminfo.tickerid, _wtf6, f_se(pivotLen, structLenL, atrLen, effThresh, dispThresh, convMult, impulseAtrMult, chochBufferATR, effLen), lookahead = barmerge.lookahead_off)
 
 string l0_phaseCanon = f_phaseStr(int(nz(se5_ph)))
 f_waveDirByOrigin(float _origin, int _fallbackDir) => not na(_origin) ? (close > _origin ? 1 : close < _origin ? -1 : _fallbackDir) : _fallbackDir
@@ -1092,15 +1179,22 @@ if not na(atkT3Px) and (atkT3Px >= _atkRef ? high >= atkT3Px : low <= atkT3Px)
 //   authority string `currentDisplayPhase` — no second phase map anywhere.
 // ═══════════════════════════════════════════════════════════════════════════════
 f_regCol(string _p) =>
-     str.contains(_p, "Liquidation Wave") ? color.orange :
-     str.contains(_p, "Induction")        ? #fbbf24 :
-     str.contains(_p, "Pre-Convexity")    ? #38bdf8 :
-     str.contains(_p, "Liquidity")        ? #a78bfa :
-     str.contains(_p, "Absorption")       ? #fb7185 :
-     str.contains(_p, "New High")         ? #34d399 :
-     str.contains(_p, "New Low")          ? #fb7185 :
-     str.contains(_p, "Expansion")        ? #34d399 :
-     (str.contains(_p, "Demand Return") or str.contains(_p, "Supply Return")) ? #fbbf24 : #94a3b8
+     str.contains(_p, "Liquidation Wave")        ? color.orange :
+     str.contains(_p, "Terminal")                ? #f43f5e :
+     str.contains(_p, "Liquidation")             ? #f59e0b :
+     (str.contains(_p, "Induction") and not str.contains(_p, "Expansion")) ? #fb923c :
+     str.contains(_p, "HTF Flip")                ? #c084fc :
+     str.contains(_p, "Demand Return")           ? #2dd4bf :
+     str.contains(_p, "Supply Return")           ? #f43f5e :
+     str.contains(_p, "Transition")              ? #fbbf24 :
+     str.contains(_p, "Retracement")             ? #fed7aa :
+     str.contains(_p, "New High")                ? #34d399 :
+     str.contains(_p, "New Low")                 ? #fb7185 :
+     str.contains(_p, "Expansion Liquidity")     ? #818cf8 :
+     str.contains(_p, "Expansion Induction")     ? #38bdf8 :
+     str.contains(_p, "Expansion Pre-Convexity") ? #22d3ee :
+     str.contains(_p, "Expansion")               ? #34d399 :
+     #94a3b8
 f_regTxt(string _p) => str.upper(str.replace_all(_p, " • ", "  —  "))
 
 var array<box>   _regBoxes = array.new<box>()
@@ -1239,12 +1333,120 @@ string tSeq = (not tH1Lt ? "take H1 low" : not tH1Ht ? "take H1 high" : "H1 done
 //    condition + regime straight from LETRA (phase · EDE · fractal stack) +
 //    Resolution + native conflict, so nothing here recalculates lower-engine logic.
 
+// ══════════════════════════════════════════════════════════════════════════════
+// F72 — THE CURVE OBJECT  (Axiom 0 foundation)
+//   A first-class energy/displacement entity, assembled from the f_phys primitives
+//   that already exist. Energy cannot travel straight forever → it displaces → a
+//   curve. Consequence layers (phases, campaign, participants) should read FROM this
+//   object rather than recomputing their own. This is the foundation stone.
+// ══════════════════════════════════════════════════════════════════════════════
+type Curve
+    int   dir      = 0
+    float origin   = na
+    float extreme  = na
+    float dispATR  = 0.0     // displacement achieved, in ATR units (energy → price)
+    float eIn      = 0.0     // expansion energy injected (0..100)
+    float eDiss    = 0.0     // energy dissipated (0..100)
+    float eRes     = 0.0     // energy remaining (0..100)
+    float convex   = 0.0     // curvature (0..100)
+    float compress = 0.0     // compression (0..100, high = tight)
+    float maturity = 0.0     // lifecycle progress (0..100)
+int    _cvDir  = displayWaveDir_M5
+float  _cvOrig = se5_inv
+float  _cvExt  = _cvDir == 1 ? nz(cycleHigh, high) : _cvDir == -1 ? nz(cycleLow, low) : close
+float  _cvDisp = not na(_cvOrig) ? math.abs(_cvExt - _cvOrig) / math.max(atr, 1e-10) : 0.0
+float  _cvComp = math.min(100.0, math.max(0.0, (1.0 - math.min(displacement / math.max(dispThresh, 1e-10), 1.0)) * 60.0 + (1.0 - math.min(efficiency / math.max(effThresh, 1e-10), 1.0)) * 40.0))
+Curve  gCurve  = Curve.new(_cvDir, _cvOrig, _cvExt, nz(_cvDisp, 0.0), nz(ede_expansionEnergy, 0.0), nz(ede_dissipatedEnergy, 0.0), nz(re_residualEnergyScore, 0.0), nz(convexityScore, 0.0), nz(se5_comp, _cvComp), nz(waveProgress, 0.0))
+
+// Per-rung curve family — every timeframe rung carries its OWN Curve (curves inside
+// curves). c_r3 is the canonical/chart rung == the same wave promoted to gCurve.
+// Energy here is a maturity proxy per rung (full energy framework is canonical-only).
+f_rungCurve(int _d, float _o, float _cv, float _mat, float _cmp) =>
+    Curve.new(_d, _o, na, 0.0, 100.0, _mat, math.max(0.0, 100.0 - _mat), _cv, _cmp, _mat)
+Curve c_r1 = f_rungCurve(m1_dir, se1_inv,   nz(se1_cm),   nz(se1_wp),   nz(se1_comp))
+Curve c_r2 = f_rungCurve(l3_dir, se3_inv,   nz(se3_cm),   nz(se3_wp),   nz(se3_comp))
+Curve c_r3 = f_rungCurve(l0_dir, se5_inv,   nz(se5_cm),   nz(se5_wp),   nz(se5_comp))
+Curve c_r4 = f_rungCurve(l1_dir, se15_inv,  nz(se15_cm),  nz(se15_wp),  nz(se15_comp))
+Curve c_r5 = f_rungCurve(l2_dir, se60_inv,  nz(se60_cm),  nz(se60_wp),  nz(se60_comp))
+Curve c_r6 = f_rungCurve(l4_dir, se240_inv, nz(se240_cm), nz(se240_wp), nz(se240_comp))
+
+// ══════════════════════════════════════════════════════════════════════════════
+// F72 — RECURSIVE CURVE TREE  (event-generated CurveNodes — the real engine seed)
+//   Recursion is EVENT-generated, not timeframe-generated: a Phase-2 CHoCH against
+//   the owning node spawns a CHILD curve (same lifecycle, opposite orientation).
+//   Ownership = the dominant-ENERGY node (Axiom 4). A child that keeps making
+//   progress GAINS energy and owns (→ transfer); one that stalls decays and dies
+//   (→ merge back into parent). FIRST-PASS: structure is solid; energy dynamics are
+//   a calibratable heuristic. Additive — not yet wired to the phase labels.
+// ══════════════════════════════════════════════════════════════════════════════
+type CurveNode
+    int   id      = 0
+    int   parent  = -1
+    int   dir     = 0
+    float origin  = na
+    float extreme = na
+    float energy  = 0.0
+    bool  alive   = true
+    int   depth   = 0
+var array<CurveNode> _tree = array.new<CurveNode>()
+var int _nodeSeq = 0
+// pre-owner (max-energy living node) — drives child-spawn direction
+int   _preOwn = -1
+float _preE   = -1.0
+if array.size(_tree) > 0
+    for _ti = 0 to array.size(_tree) - 1
+        CurveNode _tn = array.get(_tree, _ti)
+        if _tn.alive and _tn.energy > _preE
+            _preE := _tn.energy
+            _preOwn := _ti
+// seed the root curve once a wave exists
+if array.size(_tree) == 0 and displayWaveDir_M5 != 0 and not na(se5_inv)
+    _nodeSeq += 1
+    array.push(_tree, CurveNode.new(_nodeSeq, -1, displayWaveDir_M5, se5_inv, close, math.max(40.0, nz(ede_expansionEnergy, 60.0)), true, 0))
+// event-generated CHILD: a Phase-2 CHoCH against the owner spawns an inverse curve
+if _preOwn >= 0
+    CurveNode _po = array.get(_tree, _preOwn)
+    if (_po.dir == 1 and bearCHoCH) or (_po.dir == -1 and bullCHoCH)
+        _nodeSeq += 1
+        array.push(_tree, CurveNode.new(_nodeSeq, _po.id, -_po.dir, close, close, math.max(25.0, nz(ede_expansionEnergy, 50.0) * 0.85), true, _po.depth + 1))
+// update living nodes — energy rises on progress (continuation), decays when stalled
+if array.size(_tree) > 0
+    for _ti = 0 to array.size(_tree) - 1
+        CurveNode _tn = array.get(_tree, _ti)
+        if _tn.alive
+            bool _prog = _tn.dir == 1 ? high > nz(_tn.extreme, high) : low < nz(_tn.extreme, low)
+            _tn.extreme := _tn.dir == 1 ? math.max(nz(_tn.extreme, high), high) : math.min(nz(_tn.extreme, low), low)
+            _tn.energy  := _prog ? math.min(100.0, _tn.energy + 7.0) : math.max(0.0, _tn.energy - 3.5)
+            if _tn.energy <= 2.0
+                _tn.alive := false
+while array.size(_tree) > 60
+    array.shift(_tree)
+// tree summary + final (emergent) owner = dominant-energy living node
+int   _treeAlive = 0
+int   _treeDepth = 0
+int   _ownF  = -1
+float _ownFE = -1.0
+if array.size(_tree) > 0
+    for _ti = 0 to array.size(_tree) - 1
+        CurveNode _tn = array.get(_tree, _ti)
+        if _tn.alive
+            _treeAlive += 1
+            _treeDepth := math.max(_treeDepth, _tn.depth)
+            if _tn.energy > _ownFE
+                _ownFE := _tn.energy
+                _ownF  := _ti
+int   _ownDirT   = _ownF >= 0 ? array.get(_tree, _ownF).dir    : 0
+int   _ownDepthT = _ownF >= 0 ? array.get(_tree, _ownF).depth  : 0
+float _ownNrgT   = _ownF >= 0 ? array.get(_tree, _ownF).energy : 0.0
+
 // ── Drawing objects + hoisted state for global alerts ────────────────────────
 var array<line>  net_lines = array.new<line>()
 var array<label> net_lbls  = array.new<label>()
 var array<line>  web_lines = array.new<line>()
 var array<line>  hud_lines = array.new<line>()
 var array<label> hud_lbls  = array.new<label>()
+var array<line>  part_lines = array.new<line>()
+var array<label> part_lbls  = array.new<label>()
 var box          fezBox    = na
 var label        vLbl      = na
 var table        readout   = na
@@ -1253,6 +1455,7 @@ var table        ctxPanel  = na
 var table        copilot   = na
 var table        tfPanel   = na
 var table        matrix    = na
+var table        campaign  = na
 var int    gMaster   = 0
 var float  gConflict = 0.0
 var string gAction   = "WAIT"
@@ -1431,6 +1634,10 @@ if barstate.islast
     array<int> _fwd = f_pathNodes(true)
     int _nextIdx = array.size(_fwd) > 0 ? array.get(_fwd, 0) : -1
 
+    // F72 Campaign Ownership + Participant Engine moved to their own barstate.islast
+    // block near the end of the script (keeps this block under Pine's size limit).
+
+
     color vCol = master == 1 ? #34d399 : master == -1 ? #fb7185 : #475569
     color aCol = action == "ATTACK" ? #34d399 : action == "PREPARE" ? #fbbf24 : str.startswith(action, "MANAGE") ? #29b6f6 : #475569
 
@@ -1461,7 +1668,7 @@ if barstate.islast
         table.cell(readout, 0, 6, "Letra · Attractor", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(readout, 1, 6, str.tostring(math.round(attractor)) + "  " + f_cpNode(_attrIdx), text_color = #fbbf24, text_size = size.small)
         table.cell(readout, 0, 7, "Network · Bias", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
-        table.cell(readout, 1, 7, netBias == 1 ? "▲ BULL" : netBias == -1 ? "▼ BEAR" : "○ —", text_color = netBias == 1 ? #34d399 : netBias == -1 ? #fb7185 : #475569, text_size = size.small)
+        table.cell(readout, 1, 7, pdir == 1 ? "▲ BULL" : pdir == -1 ? "▼ BEAR" : "○ —", text_color = pdir == 1 ? #34d399 : pdir == -1 ? #fb7185 : #475569, text_size = size.small)
         table.cell(readout, 0, 8, "Network · Nodes", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(readout, 1, 8, str.tostring(array.size(nPx)) + " (" + str.tostring(_eligN) + " live)", text_color = #e2e8f0, text_size = size.small)
         table.cell(readout, 0, 9, "Network · Pressure", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
@@ -1725,27 +1932,27 @@ if barstate.islast
         table.cell(matrix, 2, 0, "EXECUTION PROBABILITY", text_color = #d7faff, text_size = size.small, text_halign = text.align_left, bgcolor = color.new(#1f2937, 10))
         table.cell(matrix, 3, 0, _liveDot, text_color = _pulse ? #22d3ee : #475569, text_size = size.small, bgcolor = color.new(#1f2937, 10))
         // ── narrative rows + execution probabilities
-        table.cell(matrix, 0, 1, "M1", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(matrix, 0, 1, _wl1, text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 1, 1, f_wv(m1_dir, _f1), text_color = _c1, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 2, 1, "Exec Directive", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 3, 1, _execDir, text_color = str.startswith(_execDir, "ATTACK") ? #34d399 : str.startswith(_execDir, "STAND") ? #fb7185 : #fbbf24, text_size = size.small, text_halign = text.align_left)
-        table.cell(matrix, 0, 2, "M3", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(matrix, 0, 2, _wl2, text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 1, 2, f_wv(l3_dir, _f3), text_color = _c3, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 2, 2, "Continuation", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 3, 2, str.tostring(math.round(_pCont)) + "%", text_color = #38bdf8, text_size = size.small, text_halign = text.align_left)
-        table.cell(matrix, 0, 3, "M5", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(matrix, 0, 3, _wl3, text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 1, 3, f_wv(l0_dir, _f5), text_color = _c5, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 2, 3, "Reversal", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 3, 3, str.tostring(math.round(_pRev)) + "%", text_color = #fb7185, text_size = size.small, text_halign = text.align_left)
-        table.cell(matrix, 0, 4, "M15", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(matrix, 0, 4, _wl4, text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 1, 4, f_wv(l1_dir, _f15), text_color = _c15, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 2, 4, "Expansion", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 3, 4, str.tostring(math.round(_pExp)) + "%", text_color = #34d399, text_size = size.small, text_halign = text.align_left)
-        table.cell(matrix, 0, 5, "H1", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(matrix, 0, 5, _wl5, text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 1, 5, f_wv(l2_dir, _f60), text_color = _c60, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 2, 5, "New High / Low", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 3, 5, str.tostring(math.round(_pNew)) + "%", text_color = #a78bfa, text_size = size.small, text_halign = text.align_left)
-        table.cell(matrix, 0, 6, "H4", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(matrix, 0, 6, _wl6, text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 1, 6, f_wv(l4_dir, _f240), text_color = _c240, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 2, 6, "Absorption", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 3, 6, str.tostring(math.round(_pAbs)) + "%", text_color = #fbbf24, text_size = size.small, text_halign = text.align_left)
@@ -1760,27 +1967,27 @@ if barstate.islast
         // ── MTF fusion (left) + multi-level progress (right)
         table.cell(matrix, 0, 9, "MTF FUSION", text_color = #d7faff, text_size = size.small, text_halign = text.align_left, bgcolor = color.new(#1f2937, 10))
         table.cell(matrix, 1, 9, "", bgcolor = color.new(#1f2937, 10))
-        table.cell(matrix, 2, 9, "M1", text_color = _c1, text_size = size.small, text_halign = text.align_left)
+        table.cell(matrix, 2, 9, _wl1, text_color = _c1, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 3, 9, f_gauge(nz(se1_wp)) + " " + str.tostring(math.round(nz(se1_wp))) + "%", text_color = _c1, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 0, 10, "Fusion Interp", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 1, 10, _fusionInterp, text_color = #fbbf24, text_size = size.small, text_halign = text.align_left)
-        table.cell(matrix, 2, 10, "M3", text_color = _c3, text_size = size.small, text_halign = text.align_left)
+        table.cell(matrix, 2, 10, _wl2, text_color = _c3, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 3, 10, f_gauge(nz(se3_wp)) + " " + str.tostring(math.round(nz(se3_wp))) + "%", text_color = _c3, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 0, 11, "Fusion Conf", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 1, 11, str.tostring(math.round(_fusionConf)) + "%", text_color = #e2e8f0, text_size = size.small, text_halign = text.align_left)
-        table.cell(matrix, 2, 11, "M5", text_color = _c5, text_size = size.small, text_halign = text.align_left)
+        table.cell(matrix, 2, 11, _wl3, text_color = _c5, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 3, 11, f_gauge(nz(se5_wp)) + " " + str.tostring(math.round(nz(se5_wp))) + "%", text_color = _c5, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 0, 12, "HTF Trend", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 1, 12, _htfTrend, text_color = str.startswith(_htfTrend, "Weak") ? #fb7185 : #34d399, text_size = size.small, text_halign = text.align_left)
-        table.cell(matrix, 2, 12, "M15", text_color = _c15, text_size = size.small, text_halign = text.align_left)
+        table.cell(matrix, 2, 12, _wl4, text_color = _c15, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 3, 12, f_gauge(nz(se15_wp)) + " " + str.tostring(math.round(nz(se15_wp))) + "%", text_color = _c15, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 0, 13, "LTF Reversal", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 1, 13, _ltfRevTx, text_color = _ltfRev ? #fbbf24 : #475569, text_size = size.small, text_halign = text.align_left)
-        table.cell(matrix, 2, 13, "H1", text_color = _c60, text_size = size.small, text_halign = text.align_left)
+        table.cell(matrix, 2, 13, _wl5, text_color = _c60, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 3, 13, f_gauge(nz(se60_wp)) + " " + str.tostring(math.round(nz(se60_wp))) + "%", text_color = _c60, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 0, 14, "", text_size = size.small)
         table.cell(matrix, 1, 14, "", text_size = size.small)
-        table.cell(matrix, 2, 14, "H4", text_color = _c240, text_size = size.small, text_halign = text.align_left)
+        table.cell(matrix, 2, 14, _wl6, text_color = _c240, text_size = size.small, text_halign = text.align_left)
         table.cell(matrix, 3, 14, f_gauge(nz(se240_wp)) + " " + str.tostring(math.round(nz(se240_wp))) + "%", text_color = _c240, text_size = size.small, text_halign = text.align_left)
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -1791,22 +1998,191 @@ if barstate.islast
             tfPanel := table.new(position.bottom_left, 2, 9, bgcolor = color.new(#0a0e27, 4), frame_color = color.new(#22d3ee, 25), frame_width = 2, border_width = 0)
         table.cell(tfPanel, 0, 0, "──── CONTROL ────", text_color = #cfe9ff, text_size = size.normal, text_halign = text.align_center)
         table.cell(tfPanel, 1, 0, _liveDot, text_color = _pulse ? #22d3ee : #475569, text_size = size.normal, text_halign = text.align_center)
-        table.cell(tfPanel, 0, 1, "M1", text_color = #cbd5e1, text_size = size.normal, text_halign = text.align_center)
+        table.cell(tfPanel, 0, 1, _wl1, text_color = #cbd5e1, text_size = size.normal, text_halign = text.align_center)
         table.cell(tfPanel, 1, 1, m1_dir == 1 ? "▲ Bulls" : m1_dir == -1 ? "▼ Bears" : "— Flat", text_color = m1_dir == 1 ? #4ade80 : m1_dir == -1 ? #f87171 : #94a3b8, text_size = size.normal, text_halign = text.align_left)
-        table.cell(tfPanel, 0, 2, "M3", text_color = #cbd5e1, text_size = size.normal, text_halign = text.align_center)
+        table.cell(tfPanel, 0, 2, _wl2, text_color = #cbd5e1, text_size = size.normal, text_halign = text.align_center)
         table.cell(tfPanel, 1, 2, l3_dir == 1 ? "▲ Bulls" : l3_dir == -1 ? "▼ Bears" : "— Flat", text_color = l3_dir == 1 ? #4ade80 : l3_dir == -1 ? #f87171 : #94a3b8, text_size = size.normal, text_halign = text.align_left)
-        table.cell(tfPanel, 0, 3, "M5", text_color = #cbd5e1, text_size = size.normal, text_halign = text.align_center)
+        table.cell(tfPanel, 0, 3, _wl3, text_color = #cbd5e1, text_size = size.normal, text_halign = text.align_center)
         table.cell(tfPanel, 1, 3, l0_dir == 1 ? "▲ Bulls" : l0_dir == -1 ? "▼ Bears" : "— Flat", text_color = l0_dir == 1 ? #4ade80 : l0_dir == -1 ? #f87171 : #94a3b8, text_size = size.normal, text_halign = text.align_left)
-        table.cell(tfPanel, 0, 4, "M15", text_color = #cbd5e1, text_size = size.normal, text_halign = text.align_center)
+        table.cell(tfPanel, 0, 4, _wl4, text_color = #cbd5e1, text_size = size.normal, text_halign = text.align_center)
         table.cell(tfPanel, 1, 4, l1_dir == 1 ? "▲ Bulls" : l1_dir == -1 ? "▼ Bears" : "— Flat", text_color = l1_dir == 1 ? #4ade80 : l1_dir == -1 ? #f87171 : #94a3b8, text_size = size.normal, text_halign = text.align_left)
-        table.cell(tfPanel, 0, 5, "H1", text_color = #cbd5e1, text_size = size.normal, text_halign = text.align_center)
+        table.cell(tfPanel, 0, 5, _wl5, text_color = #cbd5e1, text_size = size.normal, text_halign = text.align_center)
         table.cell(tfPanel, 1, 5, l2_dir == 1 ? "▲ Bulls" : l2_dir == -1 ? "▼ Bears" : "— Flat", text_color = l2_dir == 1 ? #4ade80 : l2_dir == -1 ? #f87171 : #94a3b8, text_size = size.normal, text_halign = text.align_left)
-        table.cell(tfPanel, 0, 6, "H4", text_color = #cbd5e1, text_size = size.normal, text_halign = text.align_center)
+        table.cell(tfPanel, 0, 6, _wl6, text_color = #cbd5e1, text_size = size.normal, text_halign = text.align_center)
         table.cell(tfPanel, 1, 6, l4_dir == 1 ? "▲ Bulls" : l4_dir == -1 ? "▼ Bears" : "— Flat", text_color = l4_dir == 1 ? #4ade80 : l4_dir == -1 ? #f87171 : #94a3b8, text_size = size.normal, text_halign = text.align_left)
         table.cell(tfPanel, 0, 7, "Authority", text_color = #cbd5e1, text_size = size.normal, text_halign = text.align_left)
         table.cell(tfPanel, 1, 7, f_gauge(fractalStackScore), text_color = fractalStackDir == 1 ? #4ade80 : fractalStackDir == -1 ? #f87171 : #fbbf24, text_size = size.normal, text_halign = text.align_left)
         table.cell(tfPanel, 0, 8, (fractalStackScore >= 66 ? "DOMINANT" : "CONTESTED") + " · " + (fractalStackDir == 1 ? "TRANSFER UPWARD" : fractalStackDir == -1 ? "TRANSFER DOWNWARD" : "BALANCED"), text_color = #cfe9ff, text_size = size.small, text_halign = text.align_left)
         table.cell(tfPanel, 1, 8, "", text_size = size.small)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// F72 — CAMPAIGN OWNERSHIP + PARTICIPANT ENGINE (own islast block, size-limit safe)
+// ══════════════════════════════════════════════════════════════════════════════
+if barstate.islast
+    array<int> _fwdC = f_pathNodes(true)
+    int    _nextC      = array.size(_fwdC) > 0 ? array.get(_fwdC, 0) : -1
+    float  _htfZone    = _nextC >= 0 ? array.get(nPx, _nextC) : na
+    int    _htfWt      = _nextC >= 0 ? array.get(nWt, _nextC) : 0
+    float  _distHTF    = not na(_htfZone) ? math.abs(_htfZone - close) : na
+    float  _curveBudget = not na(_distHTF) ? math.min(100.0, _distHTF / math.max(atr * 8.0, 1e-10) * 100.0) : na
+    float  _gComp      = gCurve.compress                                   // F72: compression read FROM the curve object
+    string _compRegime = _gComp >= 75 ? "FAILURE SWING" : _gComp >= 50 ? "COMPRESSED" : _gComp >= 25 ? "MEDIUM" : "WIDE"
+    bool   _atHTF      = not na(_distHTF) and _distHTF < atr * 1.5
+    bool   _nearHTF    = not na(_curveBudget) and _curveBudget < 25.0
+    bool   _termPhase  = str.contains(ie1a_currentPhase, "Induction") or str.contains(ie1a_currentPhase, "Liquidation") or str.contains(ie1a_currentPhase, "Terminal") or str.contains(ie1a_currentPhase, "HTF Flip") or str.contains(ie1a_currentPhase, "Return")
+    string _campaign   = (_atHTF or _termPhase) ? "TERMINAL" : "EXPANSION"
+    string _location   = (_atHTF or _termPhase) ? "INSIDE HTF ZONE" : _nearHTF ? "APPROACHING HTF ZONE" : (str.contains(ie1a_currentPhase, "Transition") or str.contains(ie1a_currentPhase, "Retracement")) ? "TRANSITIONING" : "BUILDING"
+    int    _expDepth   = _campaign == "EXPANSION" ? 0 : math.max(1, math.min(4, 1 + math.round(_gComp / 33.0)))
+    int    _ownerDir   = gCurve.dir != 0 ? gCurve.dir : gMaster            // F72: direction read FROM the curve object
+    string _ownerTx    = (_ownerDir == 1 ? "▲ BULL  " : _ownerDir == -1 ? "▼ BEAR  " : "○  ") + (_nextC >= 0 ? f_wtTf(_htfWt) + " FU" : "—")
+    color  _campCol    = _campaign == "TERMINAL" ? #fbbf24 : #34d399
+    // PARTICIPANT ENGINE — 0.618/0.70/0.786 = manipulation/displacement; FLIP = true induction
+    float  _pcHi    = gCurve.extreme                                       // F72: extreme read FROM the curve object
+    float  _pcLo    = gCurve.origin                                        // F72: origin  read FROM the curve object
+    float  _pcRng   = (not na(_pcHi) and not na(_pcLo)) ? _pcHi - _pcLo : na
+    float  _f618    = not na(_pcRng) ? _pcHi - 0.618 * _pcRng : na
+    float  _f70     = not na(_pcRng) ? _pcHi - 0.70  * _pcRng : na
+    float  _f786    = not na(_pcRng) ? _pcHi - 0.786 * _pcRng : na
+    float  _flipLvl = gCurve.dir == 1 ? flipBot : gCurve.dir == -1 ? flipTop : na
+    float  _retrAbs = (not na(_pcRng) and math.abs(_pcRng) > 1e-10) ? math.abs(_pcHi - close) / math.abs(_pcRng) : na
+    string _partZone = na(_retrAbs) ? "—" : _retrAbs < 0.55 ? "pre-0.618 · clean" : _retrAbs < 0.66 ? "0.618 · participants in" : _retrAbs < 0.74 ? "0.70 · interference" : _retrAbs < 0.82 ? "0.786 · heavy" : "FLIP · true induction"
+    bool   _inPartBand = not na(_retrAbs) and _retrAbs >= 0.55
+    bool   _displacing = _inPartBand and (bullImpulse or bearImpulse)
+    bool   _interfDom  = str.contains(ie1a_currentPhase, "Transition") or str.contains(ie1a_currentPhase, "Retracement") or str.contains(ie1a_currentPhase, "Return") or str.contains(ie1a_currentPhase, "Induction") or str.contains(ie1a_currentPhase, "Liquidation") or str.contains(ie1a_currentPhase, "Terminal")
+    string _interfTx   = na(_retrAbs) ? "—" : _interfDom ? "DOMINANT · recursive owns" : _displacing ? "active · displacement" : "absorbed · parent continues"
+    color  _interfCol  = _interfDom ? #fb7185 : _displacing ? #fbbf24 : #34d399
+    if showParticipants
+        if array.size(part_lines) > 0
+            for _pi = 0 to array.size(part_lines) - 1
+                line.delete(array.get(part_lines, _pi))
+            array.clear(part_lines)
+        if array.size(part_lbls) > 0
+            for _pi = 0 to array.size(part_lbls) - 1
+                label.delete(array.get(part_lbls, _pi))
+            array.clear(part_lbls)
+        int _px2 = bar_index + 12
+        if not na(_f618)
+            array.push(part_lines, line.new(bar_index - 2, _f618, _px2, _f618, color = color.new(#38bdf8, 35), width = 1, style = line.style_dotted))
+            array.push(part_lbls,  label.new(_px2, _f618, "0.618 · participants", style = label.style_label_left, color = color.new(#0b1220, 25), textcolor = #7dd3fc, size = size.tiny))
+        if not na(_f70)
+            array.push(part_lines, line.new(bar_index - 2, _f70, _px2, _f70, color = color.new(#fbbf24, 40), width = 1, style = line.style_dotted))
+            array.push(part_lbls,  label.new(_px2, _f70, "0.70 · interference", style = label.style_label_left, color = color.new(#0b1220, 25), textcolor = #fcd34d, size = size.tiny))
+        if not na(_f786)
+            array.push(part_lines, line.new(bar_index - 2, _f786, _px2, _f786, color = color.new(#fb923c, 40), width = 1, style = line.style_dotted))
+            array.push(part_lbls,  label.new(_px2, _f786, "0.786 · heavy", style = label.style_label_left, color = color.new(#0b1220, 25), textcolor = #fdba74, size = size.tiny))
+        if not na(_flipLvl)
+            array.push(part_lines, line.new(bar_index - 2, _flipLvl, _px2, _flipLvl, color = color.new(#f43f5e, 18), width = 2))
+            array.push(part_lbls,  label.new(_px2, _flipLvl, "FLIP · TRUE INDUCTION", style = label.style_label_left, color = color.new(#f43f5e, 12), textcolor = #0d1117, size = size.tiny))
+    if showCampaign
+        if na(campaign)
+            campaign := table.new(position.middle_left, 2, 10, bgcolor = color.new(#0a0e27, 4), frame_color = color.new(#22d3ee, 25), frame_width = 2, border_width = 0)
+        table.cell(campaign, 0, 0, "◤ CAMPAIGN ▌ F72 " + _liveDot, text_color = #d7faff, text_size = size.normal, text_halign = text.align_left, bgcolor = color.new(#0c4a6e, 12))
+        table.cell(campaign, 1, 0, _campaign, text_color = #06121f, text_size = size.normal, bgcolor = color.new(_campCol, 25))
+        table.cell(campaign, 0, 1, "Who owns price", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 1, _ownerTx, text_color = _ownerDir == 1 ? #34d399 : _ownerDir == -1 ? #fb7185 : #94a3b8, text_size = size.small)
+        table.cell(campaign, 0, 2, "Location", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 2, _location, text_color = #e2e8f0, text_size = size.small, bgcolor = color.new(_campCol, 80))
+        table.cell(campaign, 0, 3, "Compression", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 3, _compRegime + "  " + str.tostring(math.round(_gComp)) + "%", text_color = _gComp >= 50 ? #fbbf24 : #34d399, text_size = size.small)
+        table.cell(campaign, 0, 4, "Curve budget → HTF", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 4, na(_curveBudget) ? "—" : str.tostring(math.round(_curveBudget)) + "%  " + f_cpNode(_nextC), text_color = #e2e8f0, text_size = size.small)
+        table.cell(campaign, 0, 5, "Recursive depth", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 5, "exp " + str.tostring(_expDepth) + " / 4   obs " + str.tostring(se5_rec) + "   dom " + str.tostring(math.round(se5_dom)) + "%", text_color = #c4b5fd, text_size = size.small)
+        table.cell(campaign, 0, 6, "Transition maturity", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 6, str.tostring(math.round(waveProgress)) + "%", text_color = #e2e8f0, text_size = size.small)
+        table.cell(campaign, 0, 7, "Participant zone", text_color = #5fd0ff, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 7, _partZone, text_color = #7dd3fc, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 0, 8, "Interference", text_color = #5fd0ff, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 8, _interfTx, text_color = _interfCol, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 0, 9, _campaign == "TERMINAL" ? "⚠ ENTRY CYCLE — read convexity" : (gCurve.eRes > 45 ? "● BUILDING · healthy (residual " + str.tostring(math.round(gCurve.eRes)) + "%)" : "● BUILDING · weakening (residual " + str.tostring(math.round(gCurve.eRes)) + "%)"), text_color = _campaign == "TERMINAL" ? #fbbf24 : (gCurve.eRes > 45 ? #34d399 : #fb923c), text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 9, "", text_size = size.small)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// F72 — CURVE OBJECT readout (own islast block) — the energy state of the curve
+// ══════════════════════════════════════════════════════════════════════════════
+if barstate.islast and showCurve
+    var table curveT = na
+    if na(curveT)
+        curveT := table.new(position.middle_right, 2, 9, bgcolor = color.new(#0a0e27, 4), frame_color = color.new(#22d3ee, 25), frame_width = 2, border_width = 0)
+    string _cvDirTx = gCurve.dir == 1 ? "▲ BULL" : gCurve.dir == -1 ? "▼ BEAR" : "○ —"
+    string _cvSt    = gCurve.maturity < 25 ? "CHARGING" : gCurve.eRes > 55 ? "EXPANDING" : gCurve.maturity > 80 ? "TERMINAL" : gCurve.eDiss > 50 ? "DISSIPATING" : "TRANSFERRING"
+    color  _cvStCol = _cvSt == "EXPANDING" ? #34d399 : _cvSt == "CHARGING" ? #38bdf8 : _cvSt == "TERMINAL" ? #fb7185 : #fbbf24
+    table.cell(curveT, 0, 0, "◤ CURVE ▌ ENERGY " + _liveDot, text_color = #d7faff, text_size = size.normal, text_halign = text.align_left, bgcolor = color.new(#0c4a6e, 12))
+    table.cell(curveT, 1, 0, _cvDirTx + "  " + _cvSt, text_color = #06121f, text_size = size.normal, bgcolor = color.new(_cvStCol, 25))
+    table.cell(curveT, 0, 1, "Energy in", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 1, f_gauge(gCurve.eIn) + " " + str.tostring(math.round(gCurve.eIn)) + "%", text_color = #34d399, text_size = size.small)
+    table.cell(curveT, 0, 2, "Dissipated", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 2, f_gauge(gCurve.eDiss) + " " + str.tostring(math.round(gCurve.eDiss)) + "%", text_color = #fbbf24, text_size = size.small)
+    table.cell(curveT, 0, 3, "Residual", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 3, f_gauge(gCurve.eRes) + " " + str.tostring(math.round(gCurve.eRes)) + "%", text_color = gCurve.eRes > 50 ? #34d399 : #fb7185, text_size = size.small)
+    table.cell(curveT, 0, 4, "Displacement", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 4, str.tostring(math.round(gCurve.dispATR * 10) / 10) + " ATR", text_color = #e2e8f0, text_size = size.small)
+    table.cell(curveT, 0, 5, "Convexity", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 5, f_gauge(gCurve.convex) + " " + str.tostring(math.round(gCurve.convex)) + "%", text_color = #a78bfa, text_size = size.small)
+    table.cell(curveT, 0, 6, "Compression", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 6, f_gauge(gCurve.compress) + " " + str.tostring(math.round(gCurve.compress)) + "%", text_color = gCurve.compress >= 50 ? #fbbf24 : #34d399, text_size = size.small)
+    table.cell(curveT, 0, 7, "Maturity", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 7, f_gauge(gCurve.maturity) + " " + str.tostring(math.round(gCurve.maturity)) + "%", text_color = #e2e8f0, text_size = size.small)
+    table.cell(curveT, 0, 8, "energy can't travel straight → it curves", text_color = #5eead4, text_size = size.small, text_halign = text.align_left)
+    table.cell(curveT, 1, 8, "", text_size = size.small)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// F72 — CURVE STACK (own islast block) — the nested curve family, parent (top) to
+// child (bottom), and which curve currently owns the campaign.
+// ══════════════════════════════════════════════════════════════════════════════
+if barstate.islast and showCurve
+    var table stackT = na
+    if na(stackT)
+        stackT := table.new(position.top_center, 2, 8, bgcolor = color.new(#0a0e27, 4), frame_color = color.new(#22d3ee, 25), frame_width = 2, border_width = 0)
+    string _ownerL = (nz(se240_wp) > 10 and nz(se240_wp) < 90) ? _wl6 : (nz(se60_wp) > 10 and nz(se60_wp) < 90) ? _wl5 : (nz(se15_wp) > 10 and nz(se15_wp) < 90) ? _wl4 : (nz(se5_wp) > 10 and nz(se5_wp) < 90) ? _wl3 : (nz(se3_wp) > 10 and nz(se3_wp) < 90) ? _wl2 : _wl1
+    // ── OWNERSHIP MERGE (Principle 9) — does the child curve respect the parent FU
+    //    and collapse back into it (Camp B → Camp A, parent campaign NOT finished),
+    //    or did it break the parent (genuine handoff → new campaign)? ─────────────
+    int    _childDir  = l0_dir
+    int    _parentDir = (l2_dir + l4_dir) != 0 ? ((l2_dir + l4_dir) > 0 ? 1 : -1) : l1_dir
+    bool   _counterChild = _childDir != 0 and _parentDir != 0 and _childDir != _parentDir
+    float  _pFlipTop  = math.max(nz(se60_ft, na), nz(se60_fb, na))
+    float  _pFlipBot  = math.min(nz(se60_ft, na), nz(se60_fb, na))
+    bool   _atParentFU = not na(_pFlipTop) and not na(_pFlipBot) and high >= _pFlipBot and low <= _pFlipTop
+    bool   _reactPar   = _parentDir == 1 ? (bullImpulse or close > open) : _parentDir == -1 ? (bearImpulse or close < open) : false
+    bool   _brokePar   = not na(_pFlipBot) and not na(_pFlipTop) and (_parentDir == 1 ? close < _pFlipBot : _parentDir == -1 ? close > _pFlipTop : false)
+    bool   _merged     = _counterChild and _atParentFU and _reactPar and not _brokePar
+    bool   _transferred = _counterChild and _brokePar
+    string _ownStateTx  = _transferred ? "TRANSFERRED · new campaign" : _merged ? "MERGED → parent (B→A)" : _counterChild ? "child recursion active" : "aligned with parent"
+    color  _ownStateCol = _transferred ? #fb7185 : _merged ? #34d399 : _counterChild ? #fbbf24 : #38bdf8
+    table.cell(stackT, 0, 0, "◤ CURVE STACK ▌ " + _liveDot, text_color = #d7faff, text_size = size.normal, text_halign = text.align_left, bgcolor = color.new(#0c4a6e, 12))
+    table.cell(stackT, 1, 0, "owns: " + _ownerL, text_color = #5eead4, text_size = size.normal, bgcolor = color.new(#0c4a6e, 12))
+    table.cell(stackT, 0, 1, _wl6 + "  (parent)", text_color = c_r6.dir == 1 ? #34d399 : c_r6.dir == -1 ? #fb7185 : #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(stackT, 1, 1, (c_r6.dir == 1 ? "▲ " : c_r6.dir == -1 ? "▼ " : "— ") + f_gauge(c_r6.maturity) + " " + str.tostring(math.round(c_r6.maturity)) + "%  cvx " + str.tostring(math.round(c_r6.convex)), text_color = #cbd5e1, text_size = size.small, text_halign = text.align_left)
+    table.cell(stackT, 0, 2, _wl5, text_color = c_r5.dir == 1 ? #34d399 : c_r5.dir == -1 ? #fb7185 : #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(stackT, 1, 2, (c_r5.dir == 1 ? "▲ " : c_r5.dir == -1 ? "▼ " : "— ") + f_gauge(c_r5.maturity) + " " + str.tostring(math.round(c_r5.maturity)) + "%  cvx " + str.tostring(math.round(c_r5.convex)), text_color = #cbd5e1, text_size = size.small, text_halign = text.align_left)
+    table.cell(stackT, 0, 3, _wl4, text_color = c_r4.dir == 1 ? #34d399 : c_r4.dir == -1 ? #fb7185 : #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(stackT, 1, 3, (c_r4.dir == 1 ? "▲ " : c_r4.dir == -1 ? "▼ " : "— ") + f_gauge(c_r4.maturity) + " " + str.tostring(math.round(c_r4.maturity)) + "%  cvx " + str.tostring(math.round(c_r4.convex)), text_color = #cbd5e1, text_size = size.small, text_halign = text.align_left)
+    table.cell(stackT, 0, 4, _wl3 + "  (chart)", text_color = c_r3.dir == 1 ? #34d399 : c_r3.dir == -1 ? #fb7185 : #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(stackT, 1, 4, (c_r3.dir == 1 ? "▲ " : c_r3.dir == -1 ? "▼ " : "— ") + f_gauge(c_r3.maturity) + " " + str.tostring(math.round(c_r3.maturity)) + "%  cvx " + str.tostring(math.round(c_r3.convex)), text_color = #e2e8f0, text_size = size.small, text_halign = text.align_left)
+    table.cell(stackT, 0, 5, _wl2, text_color = c_r2.dir == 1 ? #34d399 : c_r2.dir == -1 ? #fb7185 : #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(stackT, 1, 5, (c_r2.dir == 1 ? "▲ " : c_r2.dir == -1 ? "▼ " : "— ") + f_gauge(c_r2.maturity) + " " + str.tostring(math.round(c_r2.maturity)) + "%  cvx " + str.tostring(math.round(c_r2.convex)), text_color = #cbd5e1, text_size = size.small, text_halign = text.align_left)
+    table.cell(stackT, 0, 6, _wl1 + "  (child)", text_color = c_r1.dir == 1 ? #34d399 : c_r1.dir == -1 ? #fb7185 : #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(stackT, 1, 6, (c_r1.dir == 1 ? "▲ " : c_r1.dir == -1 ? "▼ " : "— ") + f_gauge(c_r1.maturity) + " " + str.tostring(math.round(c_r1.maturity)) + "%  cvx " + str.tostring(math.round(c_r1.convex)), text_color = #cbd5e1, text_size = size.small, text_halign = text.align_left)
+    table.cell(stackT, 0, 7, "Ownership", text_color = #5fd0ff, text_size = size.small, text_halign = text.align_left)
+    table.cell(stackT, 1, 7, _ownStateTx, text_color = _ownStateCol, text_size = size.small, text_halign = text.align_left)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// F72 — CURVE TREE readout (own islast block) — the event-generated recursion
+// ══════════════════════════════════════════════════════════════════════════════
+if barstate.islast and showCurve
+    var table treeT = na
+    if na(treeT)
+        treeT := table.new(position.middle_center, 2, 4, bgcolor = color.new(#0a0e27, 4), frame_color = color.new(#22d3ee, 25), frame_width = 2, border_width = 0)
+    string _odTx = _ownDirT == 1 ? "▲ BULL" : _ownDirT == -1 ? "▼ BEAR" : "○ —"
+    table.cell(treeT, 0, 0, "◤ CURVE TREE ▌ event-recursion " + _liveDot, text_color = #d7faff, text_size = size.normal, text_halign = text.align_left, bgcolor = color.new(#0c4a6e, 12))
+    table.cell(treeT, 1, 0, _odTx + "  d" + str.tostring(_ownDepthT), text_color = _ownDirT == 1 ? #34d399 : _ownDirT == -1 ? #fb7185 : #94a3b8, text_size = size.normal, bgcolor = color.new(#0c4a6e, 12))
+    table.cell(treeT, 0, 1, "Recursion depth (event)", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(treeT, 1, 1, str.tostring(_treeDepth), text_color = #c4b5fd, text_size = size.small)
+    table.cell(treeT, 0, 2, "Live curve nodes", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(treeT, 1, 2, str.tostring(_treeAlive), text_color = #e2e8f0, text_size = size.small)
+    table.cell(treeT, 0, 3, "Owner energy (dominant)", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+    table.cell(treeT, 1, 3, f_gauge(_ownNrgT) + " " + str.tostring(math.round(_ownNrgT)), text_color = _ownNrgT > 50 ? #34d399 : #fbbf24, text_size = size.small)
 
 // ── Alerts (global scope) ─────────────────────────────────────────────────────
 alertcondition(gAction == "ATTACK" and gMaster == 1,  "Senseei ATTACK Long",  "Master Senseei: ATTACK long")

@@ -1,0 +1,338 @@
+# F72 — Recursive Curve Ownership Engine
+
+## Paradigm
+This is **not a phase machine**. It is a **Recursive Curve Ownership Engine**.
+
+Price is not candles. Price is **curves inside curves**. Every curve — parent or
+recursion — obeys the *same* lifecycle. A recursion is just another curve at a
+smaller scale, possibly inverted relative to its parent. There are no special curve
+types and no new nomenclature.
+
+The engine's job is never "what phase comes next?" It is to continuously answer:
+
+1. **Who owns price?** (which curve currently controls)
+2. **Are we Building or Terminal?**
+3. **How much curve remains?** (`remainingCurveBudget`)
+4. **How many recursive cycles are physically possible?** (`expectedRecursiveDepth`)
+
+Confusing *Building* with *Terminal* is where traders get liquidated. That
+distinction is the whole game.
+
+## The one lifecycle (applies recursively, at every scale)
+```
+Point 4 Origin → Expansion → Pre-Convexity → Induction → Liquidity → New High/Low
+→ TRANSITION → Retracement → Retr Pre-Convexity → Retr Induction → Retr Liquidity
+→ Demand/Supply Return → (Origin of the next curve)
+```
+The only differences between curves are **scale · orientation · available space**.
+
+## Key principles
+- **New High does not end the cycle.** After a New High, late participants enter,
+  the internal trend breaks (Phase-2 CHoCH), and that spawns an *inverted recursive
+  curve* inside the parent. Same physics, opposite orientation.
+- **Recursions can recurse.** 1–4+ recursions may occur before the parent high
+  finally transitions into retracement. Not special cases — just curves in curves.
+- **Curve budget determines recursion depth.** There is no fixed count. Depth is
+  constrained by geometry: remaining distance to the HTF target, compression,
+  convexity width, velocity, time. Wide convexity → large loops; compressed →
+  failure swing + small loops; tiny → immediate entry.
+- **FU structures solve the hard human problem.** The indicator already maps FU
+  candles, flip zones, supply/demand, imbalances across all timeframes — the thing
+  a human cannot do by eye. That hard part is **done**.
+- **Expansion side is easy.** From FU flip → HTF flip zone is "just expansion."
+  Minor recursions are subordinate; the destination is known. Almost boring.
+- **Terminal side is critical.** Inside the HTF flip zone: induction → counter-trend
+  → recursive models → terminal sequence → supply/demand → new campaign. This is
+  where entries are made or lost.
+- **Compression only matters in terminal regions** (highs, lows, supply, demand, HTF
+  flip zones) — it determines recursion size, count, and transition speed.
+- **FU ownership can merge campaigns.** If a recursive curve reacts off and then
+  *respects* the parent FU flip zone, ownership transfers back: Camp B collapses
+  into Camp A — it was one continuous campaign, and the parent cycle still has
+  unfinished work. Tracking this ownership transfer is critical.
+- **Successful transition makes continuation near-certain.** After transition,
+  price trends to the HTF flip zone with high probability. The hard question is not
+  "will it trend?" but "have we already entered terminal behavior?"
+
+## Priority hierarchy (build the engine top-down)
+- **Level 1 — Campaign Ownership:** Expansion Campaign vs Terminal Campaign.
+- **Level 2 — Location:** Building · Transitioning · Approaching HTF Zone · Inside HTF Zone.
+- **Level 3 — Compression Regime:** Wide · Medium · Compressed · Failure Swing.
+- **Level 4 — Recursive Depth:** 0 · 1 · 2 · 3 · 4+.
+- **Level 5 — Micro Phases:** Origin/Expansion/Induction/Liquidity/Return — *least important.*
+
+Micro phases are the bottom layer, not the driver.
+
+## Master objective
+Maintain a continuously-updating map of: curve ownership, campaign ownership,
+recursive depth, transition maturity, remaining curve capacity, and terminal-sequence
+development — so the machine can state whether price is **still building** or has
+**already entered the entry (terminal) cycle.**
+
+---
+
+## Mapping F72 to signals the indicator ALREADY computes
+| F72 concept | Existing signal in F16/F72 code |
+|---|---|
+| FU candles / flip zones | `f_fuPool` nodes · `flipTop`/`flipBot` · `_ft`/`_fb` per curve |
+| HTF flip zone / target | higher-rung `se##_ft`/`se##_fb`; network attractor; FEZ |
+| Supply/Demand | flip-zone extremes · network nodes |
+| Compression Index | `_compIdx` (displacement + efficiency) |
+| Convexity width | `_convScore` / `convSmooth` |
+| Recursive depth | `_recBrk` (Phase-2 CHoCH counter, armed by pullback pivots) |
+| Transition maturity | `_recDom` dominance transfer (completes at 50%) |
+| Who owns price | canonical wave `_dir`/`_wdir` + which rung's curve contains price |
+| Build vs Terminal | price approaching HTF flip zone (build) vs inside it (terminal) |
+| Remaining curve budget | distance from price to the HTF flip zone / objective |
+
+The hard part (structure discovery) is solved. The remaining work is **assigning
+structure to the right stage of the campaign** — an ownership/location layer on top
+of the existing FU/flip-zone/compression machinery, not another 14-phase rewrite.
+
+## Proposed build order
+1. **Level 1–2 (ownership + location):** a Campaign Ownership engine that classifies
+   Expansion-Campaign vs Terminal-Campaign and Building/Transitioning/Approaching/Inside,
+   from the canonical wave's relationship to the nearest HTF flip zone. Surface as a
+   compact readout. (Low risk — additive, reuses existing signals.)
+3. **Level 3–4 (compression + recursive depth + curve budget):** add
+   `compressionRegime`, `expectedRecursiveDepth`, `remainingCurveBudget`,
+   `transitionMaturity` as readouts.
+4. **Terminal-side detail:** induction → liquidation → terminal recursion inside the
+   HTF zone, gated by compression.
+5. **Ownership-merge logic:** detect when a recursion respects the parent FU and
+   collapse Camp B back into Camp A.
+6. Micro-phase labels (current region engine) demoted to a subordinate, optional layer.
+
+
+---
+
+## Terminal Mechanics & Psychology (2022 refinements)
+
+### Why transition happens — late-trend FOMO
+Late in a trend, FOMO is universal: every participant piles into the move regardless
+of who they are. That late, exhausted FOMO entry is what produces the **late Change
+of Character** that turns the market. The edge is **countering the main move at that
+exhaustion point**. (Sells were historically hard precisely because holding too long
+ignored this — recognising late-trend FOMO → terminal CHoCH was the unlock.)
+
+### The Four Shifts (canonical) — Wyckoff imprint
+Transition points — **at highs AND at supply/demand** — always contain **FOUR shifts**.
+This is the same psychological imprint Wyckoff drew: **Spring · Test · LPS1 · LPS2** =
+four waves. Not five, not three — always four. So:
+- The recursive transition cycle **targets 4 shifts** as its reference count.
+- **Compression can compress it** (failure swing + fewer/smaller recursions), but 4 is
+  the canonical target at both the high transition and the S/D transition.
+
+### The flip zone is a LIVE environment (not empty range)
+A range is a live battlefield — algos, discretionary traders, everyone interacting
+with the curve. Within it:
+- **FIB 61 / 70 / 78 = manipulation zones.** Expect **displacement** here (participants
+  enter), but this is **NOT** where the main induction happens.
+- **Main induction is always at the key S/R = the FLIP** — specifically the **LOWEST
+  flip**. The engine must find the lowest flip.
+- At the lowest flip → **terminal events**: induction liquidation + the terminal
+  liquidation-wave cycle.
+- Once price strikes supply/demand → **internal liquidities build** → **entry cycles**.
+- **Entry-cycle behaviour depends on the convexity** of the move hitting into S/D
+  (wide convexity → large terminal recursion; tight → failure swing + tiny recursion).
+
+### Fluidity — no hard constraints
+The market is fluid; do **not** gate on sessions or fixed times. Reasoning must be
+fluid to capture ~95% of moves. Recursion timing is variable:
+- At **extremely important points** the recursive cycle can complete in **minutes**
+  (price doesn't hang about).
+- **Typically ~3 hours** of price action at transitional points (both highs and S/D).
+- Treat ~3h as a soft ceiling, not a rule.
+
+### Implementation implications
+- Recursive-transition target = **4 shifts** (high transition *and* S/D transition),
+  compression-adjustable downward (failure-swing path).
+- Terminal side must distinguish **FIB 61/70/78 manipulation/displacement** from the
+  **flip induction**, and anchor induction to the **lowest flip**.
+- Entry-cycle complexity is read from **convexity at S/D**, not a fixed sequence.
+- No session/time gating; allow minutes-to-~3h recursive completion.
+
+
+---
+
+## Architecture: THREE engines, not one phase machine
+
+The engine is not a linear phase machine. It is three concurrent engines whose
+*relationship* is the signal:
+
+### 1. Parent Curve Engine
+Tracks the dominant curve: Expansion → Trend → Approaching flip → Inside flip →
+Terminal. (This is the Campaign Ownership layer — Levels 1–2.)
+
+### 2. Recursive Curve Engine
+Tracks the inner curves: CHoCH, recursion depth, compression, failure swing, entry
+cycles. (Levels 3–4 + the recursive transition / dominance-transfer logic.)
+
+### 3. Participant Engine  ← the missing piece
+Tracks **where other participants begin interfering with the parent curve, and
+whether that interference has become dominant.** This is what the 2022 brain was
+really doing alongside curve-tracking — not counting phases, but watching *who is
+stepping in and whether they win*.
+
+## Participant Interference model
+Displacement does **not** happen randomly. It happens where participants are
+programmed to respond. On the retracement of the parent curve:
+
+```
+Expansion
+  ↓
+0.618  ← participants begin appearing (first displacement)
+0.70   ← more interference
+0.786  ← heavy interference
+  ↓
+FU FLIP ZONE  ← TRUE induction (the lowest flip)
+  ↓
+Liquidation → Supply/Demand
+```
+
+- **61.8 / 70 / 78.6 are not where the curve ends — they are where interference
+  BEGINS.** Expect displacement (fib traders, mean-reversion, VWAP, liquidity algos,
+  order-flow, discretionary) but this is *manipulation*, not the main induction.
+- The market becomes **progressively more alive** from 0.618 → flip → S/D.
+- Each displacement is itself a complete curve (Origin/Expansion/Transition/New
+  High/CHoCH/Recursion) — which is *why* markets look fractal.
+- The key per-displacement question: **did this displacement complete (price
+  continues) or did the recursive curve become dominant (interference wins → the
+  curve turns)?**
+
+## The reframed core question
+Not "what phase?" Not "bull or bear?" but:
+
+> **Where are participants beginning to interfere with the parent curve, and has
+> that interference become dominant?**
+
+Track **curve dominance** and **participant interference** simultaneously. Once
+known, almost everything else is obvious.
+
+### Implementation implications
+- Compute the parent curve's **0.618 / 0.70 / 0.786** retracement band as
+  participant/manipulation zones (distinct from the flip).
+- Flag **displacement / engagement** when price reacts inside those zones.
+- Anchor **true induction to the lowest flip**, not the fibs.
+- Report **interference state**: *absorbed* (parent continues) vs *dominant*
+  (recursive curve takes over → transition).
+- Treat the 0.618→flip→S/D span as a **living environment**, increasing in intensity.
+
+
+---
+
+## AXIOM 0 — THE CURVE IS THE FOUNDATION (read this first)
+
+Everything else in this spec is downstream of one axiom. If this is wrong, every
+layer above it is noise.
+
+### The axiom
+**Energy cannot move in a straight line forever — it must displace. Therefore, a
+curve.** That is the constant. The market is a *dissipative energy system*, and the
+curve is its fundamental shape. This is *why* the architecture is self-similar
+across every instrument and timeframe — you are not reading EURUSD or gold or
+NASDAQ, you are reading energy displacing. Different magnitude, identical geometry.
+
+### Everything else is a consequence, not a cause
+Fibonacci, sessions, ICT concepts, order blocks, FVGs, Wyckoff, participants, key
+times — **none of these are causes.** They are all consequences of energy
+displacing through a curve and interacting with other curves. The curve is the
+object; everything else is interaction with the object.
+
+### The task is STATE RECOGNITION, not prediction
+The edge was never "I know the next tick." It was: *identify the state of the
+system, and only certain futures remain physically possible.* Given Asia's internal
+structure + convexity + compression + where participants historically act, the set
+of available futures collapses. That is recognition of an energy state, not a
+forecast.
+
+### Engineering imperative (the foundation stone we never laid)
+The indicator has historically modelled the **consequences** (phases, flip zones,
+fib levels, nodes) but never the **curve itself as a first-class object**. That is
+the root crack: you cannot derive the consequences correctly from a foundation that
+is only implied.
+
+- **Represent the CURVE as the primitive:** an energy/displacement entity with a
+  measurable state (origin, energy in, displacement done, convexity, compression,
+  remaining capacity, dominance vs siblings/parent).
+- The raw materials **already exist** in `f_phys`: velocity, acceleration,
+  convexity, efficiency, displacement. They must be **assembled into the curve
+  object**, not skipped past into phase labels.
+- Then derive expansion / transition / retracement / induction / participants **from
+  the curve object**, as consequences — never as independent engines bolted on.
+- Compression and convexity of the curve determine how many child curves can exist
+  (recursion budget). Participants interact with the curve at its consequence points
+  (0.618/0.70/0.786, flip). Time and session behaviour are consequences of the
+  curve's state, not inputs to it.
+
+**If the curve object is right, everything above it follows. If it is wrong,
+nothing above it can be right.**
+
+
+---
+
+## CORRECTION — Recursive Curve Tree (the real engine, not panels)
+
+A hard, necessary distinction surfaced: **most of what was built are panels/readouts
+that express the model, not the engine that generates it.** Honest inventory of the
+current build:
+
+| Piece | What it actually is |
+|---|---|
+| `gCurve` / Curve UDT | real object (energy state) — **engine-ish** |
+| Curve Stack (M1..H4) | **panel** — and conceptually wrong (see below) |
+| Campaign ownership | **panel** (reads phase strings + curve) |
+| Participant zones | **panel** (geometry from the curve) |
+| Ownership-merge | **panel + heuristic** (geometric touch, not lifecycle) |
+| Phase machine (`f_se`) | **engine** — but linear, and it *owns* the labels |
+
+### Three things that are wrong
+1. **Recursion is EVENT-generated, not timeframe-generated.** A curve at a high
+   contains another curve inside it, inside another — *all on the same timeframe* —
+   each spawned by an event (Phase-2 CHoCH). It is NOT "M1 inside H1." The Curve
+   Stack (per-rung) is multi-timeframe context, not the recursion tree.
+2. **Ownership is an ENERGY / LIFECYCLE question, not a geometric touch.** A child
+   merges back into its parent when it *fails to complete its lifecycle* (induction
+   not exhausted, terminal liquidation not done, energy dissipated, parent energy
+   preserved). It *transfers* when it *completes* its lifecycle and breaks the
+   parent. Transfer ≠ "price broke a level." Transfer = lifecycle completion.
+3. **Phases must EMERGE from curves, not be a machine that labels them.** Curves own
+   phases. The phase/campaign/ownership "engines" should be emergent *properties of a
+   CurveNode*, not independent state machines.
+
+### The real missing object — `CurveNode` (a recursive tree)
+```
+CurveNode
+    id · parent · children[] · depth
+    dir · origin · extreme
+    energy · convexity · compression · maturity
+    state            // lifecycle, EMERGENT
+    interfaces       // FU / flip / S-D it interacts with
+    ownership        // dominant-energy flag
+    alive
+```
+- A node SPAWNS a child on an event (Phase-2 CHoCH against it).
+- Children are themselves complete curves (same lifecycle, opposite orientation).
+- **Compression** controls how many children appear, how fast, and whether they are
+  visible at all (wide → large loops; tight → failure swing + tiny loops).
+- **Ownership = the dominant-energy node** (Axiom 4). Merge/transfer are emergent
+  from energy + lifecycle completion, not from a touch test.
+- Phase / campaign / direction / narrative all DERIVE from the owning node.
+
+### Axioms (canonical)
+- **A0** Energy displaces → a curve.
+- **A1** Every curve has a lifecycle.
+- **A2** Every curve may spawn child curves (event-generated).
+- **A3** Compression determines recursion depth.
+- **A4** Ownership belongs to the dominant-energy curve.
+- **A5** Phases are descriptions of curve state — not independent machines.
+- **A6** Participants appear at energy interfaces (0.618/0.70/0.786, flip), not randomly.
+- **A7** Supply/demand are environments, not endpoints.
+- **A8** Induction is terminal behaviour approaching a higher-energy interface.
+- **A9** Transition is recursive, not linear.
+
+### Build implication
+The end state is a **Recursive Curve Tree Engine**: a live `array<CurveNode>` where
+phase, campaign, ownership are *emergent*, the existing phase machine becomes one
+emergent readout (eventually retired), and recursion depth is driven by events +
+compression — not timeframes, not a linear ladder.
