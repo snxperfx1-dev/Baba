@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v12", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v13", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -525,6 +525,25 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
     // The wave has travelled a real leg (≥1.5 ATR from origin to extreme) — used so a
     // fresh extreme only counts as New High/Low once the move is meaningful.
     bool  _extended  = not na(_inv) and math.abs(_extr - _inv) > _atr * 1.5
+    // ── RECURSIVE DISTRIBUTION CYCLE (post-extreme) ──────────────────────────
+    // After a New High/Low the wave does NOT convert straight to retracement — it
+    // distributes through a recursive cycle of FOUR opposing structural breaks:
+    // break → push back → break → … Each break is counted only once it is RE-ARMED
+    // by an intervening pullback pivot (so a single impulsive drop can't fake the
+    // whole cycle). A fresh extreme restarts the count (trend resumed).
+    var int  _recBrk = 0
+    var bool _recArm = true
+    if _reset
+        _recBrk := 0
+        _recArm := true
+    if _atExtreme and _extended
+        _recBrk := 0
+        _recArm := true
+    if (_dir == 1 and not na(_pH)) or (_dir == -1 and not na(_pL))
+        _recArm := true
+    if _oppBOS and _recArm and not _atExtreme
+        _recBrk := _recBrk + 1
+        _recArm := false
     // ── SINGLE coherent phase state machine (0 → 13) ─────────────────────────
     // One latch (_pst). NO parallel per-bar recompute. Monotonic within a cycle;
     // resets to 0 (Point 4 Origin) only on a CONFIRMED reversal (CHoCH / hard origin
@@ -559,22 +578,25 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
         // already begun retracing, pulling it back to New High.  (5 → 6 for bear, below)
         if _pst >= 1 and _atExtreme and _extended
             _pst := 5
-        // DOWNSIDE lifecycle — engaged only once price LEAVES the extreme, driven by
-        // RETRACE DEPTH (_retrFrac: 0 at the extreme → 1 at the flip-zone mid).
-        // ABSORPTION  5→7 : price first rolls over off the New High/Low.
-        if _pst == 5 and not _atExtreme and (_retrFrac > 0.12 or _momExhaust)
+        // ABSORPTION  5→7 : the New High/Low rolls over and the RECURSIVE distribution
+        // begins — the first opposing structural break is taken (or momentum exhausts).
+        if _pst == 5 and not _atExtreme and (_recBrk >= 1 or _momExhaust)
             _pst := 7
         // Fallback: a leg that never printed a clean New High but retraces deeply.
         if (_pst == 3 or _pst == 4) and not _atExtreme and _retrFrac > 0.40
             _pst := 7
-        // RETRACEMENT FAMILY  7→8→9→10→11 (depth-gated, physics as accelerant)
-        if _pst == 7 and _retrFrac > 0.35
+        // RETRACEMENT  7→8 : the recursive cycle COMPLETES — four opposing breaks (each
+        // re-armed by an intervening pullback). Only THEN does the high finish
+        // converting into the retracement. (Deep-retrace fallback prevents a stall.)
+        if _pst == 7 and (_recBrk >= 4 or _retrFrac > 0.55)
             _pst := 8
-        if _pst == 8 and (_retrFrac > 0.50 or (_momDecaying and _physConvexDevel))
+        // RETRACEMENT SUB-STRUCTURE  8→9→10→11 — must progress in order, and Liquidity
+        // is now LATE (price near the zone), fixing the previous too-early trigger.
+        if _pst == 8 and _retrFrac > 0.40
             _pst := 9
-        if _pst == 9 and (_retrFrac > 0.65 or _physTransfer)
+        if _pst == 9 and _retrFrac > 0.62
             _pst := 10
-        if _pst == 10 and (_retrFrac > 0.80 or _physCapacityLow)
+        if _pst == 10 and (_retrFrac > 0.85 or (_retrFrac > 0.70 and _physCapacityLow))
             _pst := 11
         // RETURN  11→12  (12 → 13 for bear, remapped below) — price back inside the zone
         if _pst == 11 and _atFlip
