@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v3", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v14", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -76,7 +76,7 @@ int    beliefSmooth   = input.int  (3,    "Belief EMA Smoothing",         group 
 int    _csec = timeframe.in_seconds()
 string _wtf1 = _csec < 3600 ? "1"   : _csec < 14400 ? "60"  : _csec < 86400 ? "240" : _csec < 604800 ? "D"  : "W"
 string _wtf2 = _csec < 3600 ? "3"   : _csec < 14400 ? "120" : _csec < 86400 ? "480" : _csec < 604800 ? "2D" : "2W"
-string _wtf3 = _csec < 3600 ? "5"   : _csec < 14400 ? "240" : _csec < 86400 ? "720" : _csec < 604800 ? "3D" : "M"
+string _wtf3 = timeframe.period
 string _wtf4 = _csec < 3600 ? "15"  : _csec < 14400 ? "480" : _csec < 86400 ? "D"   : _csec < 604800 ? "W"  : "3M"
 string _wtf5 = _csec < 3600 ? "60"  : _csec < 14400 ? "720" : _csec < 86400 ? "2D"  : _csec < 604800 ? "2W" : "6M"
 string _wtf6 = _csec < 3600 ? "240" : _csec < 14400 ? "D"   : _csec < 86400 ? "3D"  : _csec < 604800 ? "M"  : "12M"
@@ -495,61 +495,106 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
     bool  _physConvexDevel = _convScore > 35.0
     bool  _physTransfer    = _convScore > 48.0 or _absScore > 40.0
     bool  _physCapacityLow = _absScore > 45.0 or _eff < _effT * 0.6
-    var int _phaseState = 0
+    // ── DIRECTION (origin-based, matches the displayed wave direction) ───────────
+    int   _wdir      = not na(_inv) ? (close > _inv ? 1 : close < _inv ? -1 : _dir) : _dir
+    bool  _atFlip    = not na(_ft) and not na(_fb) and close <= _ft and close >= _fb
+    bool  _expanding = _momExpStrong or _eLong or _eShort or (_wdir == 1 ? _bullImp : _bearImp)
+    bool  _atExtreme = _wdir == 1 ? high >= nz(_cycH, high) : _wdir == -1 ? low <= nz(_cycL, low) : false
+    float _extr      = _wdir == 1 ? nz(_cycH, close) : nz(_cycL, close)
+    bool  _extended  = not na(_inv) and math.abs(_extr - _inv) > _atr * 1.5
+    float _fzMid     = (not na(_ft) and not na(_fb)) ? (_ft + _fb) / 2.0 : na
+    float _retrFrac  = (not na(_fzMid) and math.abs(_extr - _fzMid) > 1e-10) ? math.abs(_extr - close) / math.abs(_extr - _fzMid) : 0.0
+    // COMPRESSION INDEX (0..100) — high when displacement & efficiency are LOW (tight curves)
+    float _compIdx   = math.min(100.0, math.max(0.0, (1.0 - math.min(_disp / math.max(_dispT, 1e-10), 1.0)) * 60.0 + (1.0 - math.min(_eff / math.max(_effT, 1e-10), 1.0)) * 40.0))
+    // ── RECURSIVE TRANSITION — count Phase-2 CHoCHs after the extreme, each armed by
+    //    an intervening pullback pivot; a fresh extreme restarts the count. ─────────
+    bool _phase2CH = (_dir == 1 and _bearCH) or (_dir == -1 and _bullCH)
+    var int  _recBrk = 0
+    var bool _recArm = true
+    if _reset or (_atExtreme and _extended)
+        _recBrk := 0
+        _recArm := true
+    if (_dir == 1 and not na(_pH)) or (_dir == -1 and not na(_pL))
+        _recArm := true
+    if (_phase2CH or _oppBOS) and _recArm and not _atExtreme
+        _recBrk := _recBrk + 1
+        _recArm := false
+    // DOMINANCE TRANSFER — recursive wave's share of control (completes at 50%). Low
+    // compression transfers via one deep curve; high compression via many small
+    // recursions (each recursion is worth less when compression is high).
+    float _recDom = math.min(100.0, math.max(_recBrk * (30.0 - _compIdx * 0.15), _retrFrac * 80.0))
+    bool  _transferDone = _recDom >= 50.0
+    // ── SINGLE-LATCH PHASE STATE MACHINE (0 → 14) ───────────────────────────────
+    var int _pst = 0
     if _reset
-        _phaseState := 0
-    if _dir != 0
-        bool _expanding = _momExpStrong or _eLong or _eShort or (_dir == 1 ? _bullImp : _bearImp)
-        if _phaseState < 1 and _expanding and not _physTransfer and not _physCapacityLow
-            _phaseState := 1
-        if _phaseState < 2 and _bos1 and _momDecaying and _physConvexDevel
-            _phaseState := 2
-        if _phaseState < 3 and _bos1 and _momCounter and _physTransfer
-            _phaseState := 3
-        if _phaseState < 4 and _bos2 and (_momDecaying or _momCounter) and _physTransfer
-            _phaseState := 4
-        if _phaseState < 5 and _indBrk and _momExpStrong and not _physCapacityLow
-            _phaseState := 5
-        if _phaseState >= 5 and _momExhaust and _physCapacityLow
-            _phaseState := 7
-        if _phaseState >= 5 and _momCounter and not _momExhaust and _physTransfer
-            _phaseState := 8
-    int _phase = _phaseState
-    if _dir != 0
-        _phase := _momExhaust and _physCapacityLow ? 7 :
-                  _momCounter and _physTransfer    ? (_phaseState >= 5 ? (_convScore > 40.0 ? 10 : _momDecaying ? 9 : 8) : (_bos2 ? 4 : 3)) :
-                  _momExpStrong ? (_phaseState >= 5 ? _phaseState : (_bos2 and _physTransfer) ? 4 : (_bos1 and _physConvexDevel) ? 2 : 1) :
-                  _momDecaying  ? (_phaseState >= 5 ? _phaseState : 4) :
-                  _phaseState == 0 ? 1 :
-                  _phaseState
+        _pst := 0
+    if _dir != 0 and not _reset
+        // EXPANSION family — sub-textures only develop while CONSOLIDATING
+        if _pst == 0 and _expanding
+            _pst := 1
+        if _pst == 1 and not _atExtreme and _momDecaying and _physConvexDevel
+            _pst := 2
+        if _pst == 2 and not _atExtreme and _momCounter and _physTransfer
+            _pst := 3
+        if _pst == 3 and not _atExtreme and (_bos1 or _bos2 or _indBrk) and _physTransfer
+            _pst := 4
+        // CREATION — a fresh cycle extreme on a real leg (≥1.5 ATR). From any stage ≤7,
+        // so a higher high mid-transition RESCUES back to New High (trend continuation).
+        if _pst >= 1 and _pst <= 7 and _atExtreme and _extended
+            _pst := 5
+        // TRANSITION — begins on the first Phase-2 CHoCH (or exhaustion) after the high.
+        if _pst == 5 and not _atExtreme and (_recBrk >= 1 or _momExhaust)
+            _pst := 7
+        // RETRACEMENT — only once DOMINANCE TRANSFER completes (recursive wave > old).
+        if _pst == 7 and _transferDone
+            _pst := 8
+        // HTF FLIP ZONE — the retracement reaches the flip-zone terminal area.
+        if _pst == 8 and _atFlip
+            _pst := 9
+        // INDUCTION — counter-trend (against the retracement) inside the zone.
+        if _pst == 9 and ((_dir == 1 and _bullImp) or (_dir == -1 and _bearImp))
+            _pst := 10
+        // LIQUIDATION — terminal liquidity move after the induction high.
+        if _pst == 10 and (_oppBOS or _physCapacityLow)
+            _pst := 11
+        // TERMINAL CURVE — the final strike that sweeps the supply/demand extreme.
+        if _pst == 11 and ((_dir == 1 and low < _fb) or (_dir == -1 and high > _ft))
+            _pst := 12
+        // RETURN — reversal confirmed out of the zone (Demand/Supply Return).
+        if _pst == 12 and ((_dir == 1 and _bullCH) or (_dir == -1 and _bearCH))
+            _pst := 13
+    int _phase = _pst
     if _phase == 5 and _dir == -1
         _phase := 6
-    float _wp = _phaseState == 0 ? 10.0 : _phaseState == 1 ? 25.0 : _phaseState == 2 ? 40.0 : _phaseState == 3 ? 55.0 : _phaseState == 4 ? 68.0 : _phaseState == 5 ? 80.0 : _phaseState == 7 ? 92.0 : 85.0
+    if _phase == 13 and _dir == -1
+        _phase := 14
+    float _wp = _pst == 0 ? 5.0 : _pst == 1 ? 15.0 : _pst == 2 ? 25.0 : _pst == 3 ? 33.0 : _pst == 4 ? 42.0 : _pst == 5 ? 55.0 : _pst == 7 ? 65.0 : _pst == 8 ? 75.0 : _pst == 9 ? 85.0 : _pst == 10 ? 90.0 : _pst == 11 ? 94.0 : _pst == 12 ? 97.0 : 100.0
     float _cm = math.min(_convScore, 100.0)
     float _mf = math.min(math.max(_expScore, math.max(_absScore, _convScore)) * 0.70 + (_dir != 0 ? 30.0 : 0.0), 100.0)
     float _frzS = math.min((_eLong or _eShort ? 50.0 : 0.0) + _expScore * 0.30 + _convScore * 0.20, 100.0)
-    int _dirLabel = not na(_inv) ? (close > _inv ? 1 : close < _inv ? -1 : _dir) : _dir
+    int _dirLabel = _wdir
     [_dirLabel, _phase, _curSH, _curSL, _prSH, _prSL, _bosOut, _chOut, _p4h, _p4l, _inv, _tgt, _ft, _fb, _frzS, _wp, _cm, _mf]
 
 f_phaseStr(int _c) =>
-     _c == 1  ? "Expansion"                 :
-     _c == 2  ? "Expansion Pre-Convexity"   :
-     _c == 3  ? "Expansion Induction"       :
-     _c == 4  ? "Expansion Liquidity"       :
-     _c == 5  ? "New High"                  :
-     _c == 6  ? "New Low"                   :
-     _c == 7  ? "Absorption"                :
-     _c == 8  ? "Retracement"               :
-     _c == 9  ? "Retracement Pre-Convexity" :
-     _c == 10 ? "Retracement Induction"     :
-     _c == 11 ? "Retracement Liquidity"     :
-     _c == 12 ? "Demand Return"             :
-     _c == 13 ? "Supply Return"             : "Point 4 Origin"
+     _c == 1  ? "Expansion"               :
+     _c == 2  ? "Expansion Pre-Convexity" :
+     _c == 3  ? "Expansion Induction"     :
+     _c == 4  ? "Expansion Liquidity"     :
+     _c == 5  ? "New High"                :
+     _c == 6  ? "New Low"                 :
+     _c == 7  ? "Transition"              :
+     _c == 8  ? "Retracement"             :
+     _c == 9  ? "HTF Flip Zone"           :
+     _c == 10 ? "Induction"               :
+     _c == 11 ? "Liquidation"             :
+     _c == 12 ? "Terminal Curve"          :
+     _c == 13 ? "Demand Return"           :
+     _c == 14 ? "Supply Return"           : "Point 4 Origin"
 
 // Short phase-family label for the multi-timeframe panels (reads f_phaseStr).
 f_famS(int _ph) =>
     string _p = f_phaseStr(_ph)
-    str.contains(_p, "Absorption") ? "Absorption" : str.contains(_p, "Pre-Convexity") ? "Pre-Conv" : str.contains(_p, "Induction") ? "Induction" : str.contains(_p, "Liquid") ? "Liquidation" : (str.contains(_p, "New High") or str.contains(_p, "New Low")) ? "Creation" : str.contains(_p, "Return") ? "Return" : str.contains(_p, "Retracement") ? "Retracement" : "Expansion"
+    str.contains(_p, "Transition") ? "Transition" : str.contains(_p, "Terminal") ? "Terminal" : str.contains(_p, "Liquidation") ? "Liquidation" : str.contains(_p, "HTF Flip") ? "Flip Zone" : (str.contains(_p, "Induction") and not str.contains(_p, "Expansion")) ? "Induction" : str.contains(_p, "Pre-Convexity") ? "Pre-Conv" : str.contains(_p, "Expansion Induction") ? "Induction" : str.contains(_p, "Liquidity") ? "Liquidity" : (str.contains(_p, "New High") or str.contains(_p, "New Low")) ? "Creation" : str.contains(_p, "Return") ? "Return" : str.contains(_p, "Retracement") ? "Retracement" : "Expansion"
 
 // Per-timeframe wave-narrative cell text (direction + phase family).
 f_wv(int _d, string _f) => (_d == 1 ? "Bullish · " : _d == -1 ? "Bearish · " : "Neutral · ") + _f
@@ -1131,15 +1176,22 @@ if not na(atkT3Px) and (atkT3Px >= _atkRef ? high >= atkT3Px : low <= atkT3Px)
 //   authority string `currentDisplayPhase` — no second phase map anywhere.
 // ═══════════════════════════════════════════════════════════════════════════════
 f_regCol(string _p) =>
-     str.contains(_p, "Liquidation Wave") ? color.orange :
-     str.contains(_p, "Induction")        ? #fbbf24 :
-     str.contains(_p, "Pre-Convexity")    ? #38bdf8 :
-     str.contains(_p, "Liquidity")        ? #a78bfa :
-     str.contains(_p, "Absorption")       ? #fb7185 :
-     str.contains(_p, "New High")         ? #34d399 :
-     str.contains(_p, "New Low")          ? #fb7185 :
-     str.contains(_p, "Expansion")        ? #34d399 :
-     (str.contains(_p, "Demand Return") or str.contains(_p, "Supply Return")) ? #fbbf24 : #94a3b8
+     str.contains(_p, "Liquidation Wave")        ? color.orange :
+     str.contains(_p, "Terminal")                ? #f43f5e :
+     str.contains(_p, "Liquidation")             ? #f59e0b :
+     (str.contains(_p, "Induction") and not str.contains(_p, "Expansion")) ? #fb923c :
+     str.contains(_p, "HTF Flip")                ? #c084fc :
+     str.contains(_p, "Demand Return")           ? #2dd4bf :
+     str.contains(_p, "Supply Return")           ? #f43f5e :
+     str.contains(_p, "Transition")              ? #fbbf24 :
+     str.contains(_p, "Retracement")             ? #fed7aa :
+     str.contains(_p, "New High")                ? #34d399 :
+     str.contains(_p, "New Low")                 ? #fb7185 :
+     str.contains(_p, "Expansion Liquidity")     ? #818cf8 :
+     str.contains(_p, "Expansion Induction")     ? #38bdf8 :
+     str.contains(_p, "Expansion Pre-Convexity") ? #22d3ee :
+     str.contains(_p, "Expansion")               ? #34d399 :
+     #94a3b8
 f_regTxt(string _p) => str.upper(str.replace_all(_p, " • ", "  —  "))
 
 var array<box>   _regBoxes = array.new<box>()
