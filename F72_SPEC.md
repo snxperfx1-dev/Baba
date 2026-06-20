@@ -102,3 +102,52 @@ of the existing FU/flip-zone/compression machinery, not another 14-phase rewrite
 5. **Ownership-merge logic:** detect when a recursion respects the parent FU and
    collapse Camp B back into Camp A.
 6. Micro-phase labels (current region engine) demoted to a subordinate, optional layer.
+
+
+---
+
+## Terminal Mechanics & Psychology (2022 refinements)
+
+### Why transition happens — late-trend FOMO
+Late in a trend, FOMO is universal: every participant piles into the move regardless
+of who they are. That late, exhausted FOMO entry is what produces the **late Change
+of Character** that turns the market. The edge is **countering the main move at that
+exhaustion point**. (Sells were historically hard precisely because holding too long
+ignored this — recognising late-trend FOMO → terminal CHoCH was the unlock.)
+
+### The Four Shifts (canonical) — Wyckoff imprint
+Transition points — **at highs AND at supply/demand** — always contain **FOUR shifts**.
+This is the same psychological imprint Wyckoff drew: **Spring · Test · LPS1 · LPS2** =
+four waves. Not five, not three — always four. So:
+- The recursive transition cycle **targets 4 shifts** as its reference count.
+- **Compression can compress it** (failure swing + fewer/smaller recursions), but 4 is
+  the canonical target at both the high transition and the S/D transition.
+
+### The flip zone is a LIVE environment (not empty range)
+A range is a live battlefield — algos, discretionary traders, everyone interacting
+with the curve. Within it:
+- **FIB 61 / 70 / 78 = manipulation zones.** Expect **displacement** here (participants
+  enter), but this is **NOT** where the main induction happens.
+- **Main induction is always at the key S/R = the FLIP** — specifically the **LOWEST
+  flip**. The engine must find the lowest flip.
+- At the lowest flip → **terminal events**: induction liquidation + the terminal
+  liquidation-wave cycle.
+- Once price strikes supply/demand → **internal liquidities build** → **entry cycles**.
+- **Entry-cycle behaviour depends on the convexity** of the move hitting into S/D
+  (wide convexity → large terminal recursion; tight → failure swing + tiny recursion).
+
+### Fluidity — no hard constraints
+The market is fluid; do **not** gate on sessions or fixed times. Reasoning must be
+fluid to capture ~95% of moves. Recursion timing is variable:
+- At **extremely important points** the recursive cycle can complete in **minutes**
+  (price doesn't hang about).
+- **Typically ~3 hours** of price action at transitional points (both highs and S/D).
+- Treat ~3h as a soft ceiling, not a rule.
+
+### Implementation implications
+- Recursive-transition target = **4 shifts** (high transition *and* S/D transition),
+  compression-adjustable downward (failure-swing path).
+- Terminal side must distinguish **FIB 61/70/78 manipulation/displacement** from the
+  **flip induction**, and anchor induction to the **lowest flip**.
+- Entry-cycle complexity is read from **convexity at S/D**, not a fixed sequence.
+- No session/time gating; allow minutes-to-~3h recursive completion.

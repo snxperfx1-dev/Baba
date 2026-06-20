@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v14", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v15", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -32,6 +32,7 @@ bool   showHUD     = input.bool (true, "Plot HUD on chart (flight plan · target
 bool   showVerdict = input.bool (true, "Show verdict label",          group = GRP)
 bool   showTF      = input.bool (true, "Show Wave & Timeframes panel (bottom-left)", group = GRP)
 bool   showMatrix  = input.bool (true, "Show Wave Matrix panel (bottom-center)", group = GRP)
+bool   showCampaign = input.bool(true, "Show Campaign Ownership panel (F72, middle-left)", group = GRP)
 int    minConf     = input.int  (55,  "Min confidence to ATTACK",     group = GRP, minval = 0, maxval = 100)
 int    pivLen      = input.int  (8,   "Wave pivot length",            group = GRP, minval = 2, maxval = 50)
 bool   showRegions = input.bool (true, "Show phase REGION labels",    group = GRP)
@@ -1344,6 +1345,7 @@ var table        ctxPanel  = na
 var table        copilot   = na
 var table        tfPanel   = na
 var table        matrix    = na
+var table        campaign  = na
 var int    gMaster   = 0
 var float  gConflict = 0.0
 var string gAction   = "WAIT"
@@ -1521,6 +1523,49 @@ if barstate.islast
 
     array<int> _fwd = f_pathNodes(true)
     int _nextIdx = array.size(_fwd) > 0 ? array.get(_fwd, 0) : -1
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // F72 — CAMPAIGN OWNERSHIP ENGINE (Levels 1-3) — answers the four questions:
+    // who owns price · build vs terminal · how much curve remains · expected depth.
+    // Reads the existing FU/flip-zone network map (the hard part is already solved).
+    // ══════════════════════════════════════════════════════════════════════════
+    float  _htfZone    = _nextIdx >= 0 ? array.get(nPx, _nextIdx) : na      // nearest forward FU/flip zone
+    int    _htfWt      = _nextIdx >= 0 ? array.get(nWt, _nextIdx) : 0
+    float  _distHTF    = not na(_htfZone) ? math.abs(_htfZone - close) : na
+    float  _curveBudget = not na(_distHTF) ? math.min(100.0, _distHTF / math.max(atr * 8.0, 1e-10) * 100.0) : na
+    // Compression (global): high when displacement & efficiency are LOW
+    float  _gComp      = math.min(100.0, math.max(0.0, (1.0 - math.min(displacement / math.max(dispThresh, 1e-10), 1.0)) * 60.0 + (1.0 - math.min(efficiency / math.max(effThresh, 1e-10), 1.0)) * 40.0))
+    string _compRegime = _gComp >= 75 ? "FAILURE SWING" : _gComp >= 50 ? "COMPRESSED" : _gComp >= 25 ? "MEDIUM" : "WIDE"
+    bool   _atHTF      = not na(_distHTF) and _distHTF < atr * 1.5
+    bool   _nearHTF    = not na(_curveBudget) and _curveBudget < 25.0
+    bool   _termPhase  = str.contains(ie1a_currentPhase, "Induction") or str.contains(ie1a_currentPhase, "Liquidation") or str.contains(ie1a_currentPhase, "Terminal") or str.contains(ie1a_currentPhase, "HTF Flip") or str.contains(ie1a_currentPhase, "Return")
+    string _campaign   = (_atHTF or _termPhase) ? "TERMINAL" : "EXPANSION"
+    string _location   = (_atHTF or _termPhase) ? "INSIDE HTF ZONE" : _nearHTF ? "APPROACHING HTF ZONE" : (str.contains(ie1a_currentPhase, "Transition") or str.contains(ie1a_currentPhase, "Retracement")) ? "TRANSITIONING" : "BUILDING"
+    // Expected recursive depth — compression scales toward the canonical 4 shifts
+    // (Wyckoff Spring·Test·LPS1·LPS2); wide/low-compression resolves in fewer curves.
+    int    _expDepth   = _campaign == "EXPANSION" ? 0 : math.max(1, math.min(4, 1 + math.round(_gComp / 33.0)))
+    int    _ownerDir   = displayWaveDir_M5 != 0 ? displayWaveDir_M5 : master
+    string _ownerTx    = (_ownerDir == 1 ? "▲ BULL  " : _ownerDir == -1 ? "▼ BEAR  " : "○  ") + (_nextIdx >= 0 ? f_wtTf(_htfWt) + " FU" : "—")
+    color  _campCol    = _campaign == "TERMINAL" ? #fbbf24 : #34d399
+    if showCampaign
+        if na(campaign)
+            campaign := table.new(position.middle_left, 2, 8, bgcolor = color.new(#0a0e27, 4), frame_color = color.new(#22d3ee, 25), frame_width = 2, border_width = 0)
+        table.cell(campaign, 0, 0, "◤ CAMPAIGN ▌ F72 " + _liveDot, text_color = #d7faff, text_size = size.normal, text_halign = text.align_left, bgcolor = color.new(#0c4a6e, 12))
+        table.cell(campaign, 1, 0, _campaign, text_color = #06121f, text_size = size.normal, bgcolor = color.new(_campCol, 25))
+        table.cell(campaign, 0, 1, "Who owns price", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 1, _ownerTx, text_color = _ownerDir == 1 ? #34d399 : _ownerDir == -1 ? #fb7185 : #94a3b8, text_size = size.small)
+        table.cell(campaign, 0, 2, "Location", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 2, _location, text_color = #e2e8f0, text_size = size.small, bgcolor = color.new(_campCol, 80))
+        table.cell(campaign, 0, 3, "Compression", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 3, _compRegime + "  " + str.tostring(math.round(_gComp)) + "%", text_color = _gComp >= 50 ? #fbbf24 : #34d399, text_size = size.small)
+        table.cell(campaign, 0, 4, "Curve budget → HTF", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 4, na(_curveBudget) ? "—" : str.tostring(math.round(_curveBudget)) + "%  " + f_cpNode(_nextIdx), text_color = #e2e8f0, text_size = size.small)
+        table.cell(campaign, 0, 5, "Recursive depth", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 5, "exp " + str.tostring(_expDepth) + " / 4   obs " + str.tostring(entryCycle), text_color = #c4b5fd, text_size = size.small)
+        table.cell(campaign, 0, 6, "Transition maturity", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 6, str.tostring(math.round(waveProgress)) + "%", text_color = #e2e8f0, text_size = size.small)
+        table.cell(campaign, 0, 7, _campaign == "TERMINAL" ? "⚠ ENTRY CYCLE — read convexity" : "● BUILDING — destination known", text_color = _campaign == "TERMINAL" ? #fbbf24 : #34d399, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 1, 7, "", text_size = size.small)
 
     color vCol = master == 1 ? #34d399 : master == -1 ? #fb7185 : #475569
     color aCol = action == "ATTACK" ? #34d399 : action == "PREPARE" ? #fbbf24 : str.startswith(action, "MANAGE") ? #29b6f6 : #475569
