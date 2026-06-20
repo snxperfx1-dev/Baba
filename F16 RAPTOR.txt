@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v18", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v19", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -1944,7 +1944,7 @@ if barstate.islast
     int    _htfWt      = _nextC >= 0 ? array.get(nWt, _nextC) : 0
     float  _distHTF    = not na(_htfZone) ? math.abs(_htfZone - close) : na
     float  _curveBudget = not na(_distHTF) ? math.min(100.0, _distHTF / math.max(atr * 8.0, 1e-10) * 100.0) : na
-    float  _gComp      = math.min(100.0, math.max(0.0, (1.0 - math.min(displacement / math.max(dispThresh, 1e-10), 1.0)) * 60.0 + (1.0 - math.min(efficiency / math.max(effThresh, 1e-10), 1.0)) * 40.0))
+    float  _gComp      = gCurve.compress                                   // F72: compression read FROM the curve object
     string _compRegime = _gComp >= 75 ? "FAILURE SWING" : _gComp >= 50 ? "COMPRESSED" : _gComp >= 25 ? "MEDIUM" : "WIDE"
     bool   _atHTF      = not na(_distHTF) and _distHTF < atr * 1.5
     bool   _nearHTF    = not na(_curveBudget) and _curveBudget < 25.0
@@ -1952,17 +1952,17 @@ if barstate.islast
     string _campaign   = (_atHTF or _termPhase) ? "TERMINAL" : "EXPANSION"
     string _location   = (_atHTF or _termPhase) ? "INSIDE HTF ZONE" : _nearHTF ? "APPROACHING HTF ZONE" : (str.contains(ie1a_currentPhase, "Transition") or str.contains(ie1a_currentPhase, "Retracement")) ? "TRANSITIONING" : "BUILDING"
     int    _expDepth   = _campaign == "EXPANSION" ? 0 : math.max(1, math.min(4, 1 + math.round(_gComp / 33.0)))
-    int    _ownerDir   = displayWaveDir_M5 != 0 ? displayWaveDir_M5 : gMaster
+    int    _ownerDir   = gCurve.dir != 0 ? gCurve.dir : gMaster            // F72: direction read FROM the curve object
     string _ownerTx    = (_ownerDir == 1 ? "▲ BULL  " : _ownerDir == -1 ? "▼ BEAR  " : "○  ") + (_nextC >= 0 ? f_wtTf(_htfWt) + " FU" : "—")
     color  _campCol    = _campaign == "TERMINAL" ? #fbbf24 : #34d399
     // PARTICIPANT ENGINE — 0.618/0.70/0.786 = manipulation/displacement; FLIP = true induction
-    float  _pcHi    = direction == 1 ? nz(cycleHigh, high) : direction == -1 ? nz(cycleLow, low) : na
-    float  _pcLo    = direction == 1 ? nz(point4OriginLow, flipBot) : direction == -1 ? nz(point4OriginHigh, flipTop) : na
+    float  _pcHi    = gCurve.extreme                                       // F72: extreme read FROM the curve object
+    float  _pcLo    = gCurve.origin                                        // F72: origin  read FROM the curve object
     float  _pcRng   = (not na(_pcHi) and not na(_pcLo)) ? _pcHi - _pcLo : na
     float  _f618    = not na(_pcRng) ? _pcHi - 0.618 * _pcRng : na
     float  _f70     = not na(_pcRng) ? _pcHi - 0.70  * _pcRng : na
     float  _f786    = not na(_pcRng) ? _pcHi - 0.786 * _pcRng : na
-    float  _flipLvl = direction == 1 ? flipBot : direction == -1 ? flipTop : na
+    float  _flipLvl = gCurve.dir == 1 ? flipBot : gCurve.dir == -1 ? flipTop : na
     float  _retrAbs = (not na(_pcRng) and math.abs(_pcRng) > 1e-10) ? math.abs(_pcHi - close) / math.abs(_pcRng) : na
     string _partZone = na(_retrAbs) ? "—" : _retrAbs < 0.55 ? "pre-0.618 · clean" : _retrAbs < 0.66 ? "0.618 · participants in" : _retrAbs < 0.74 ? "0.70 · interference" : _retrAbs < 0.82 ? "0.786 · heavy" : "FLIP · true induction"
     bool   _inPartBand = not na(_retrAbs) and _retrAbs >= 0.55
@@ -2013,7 +2013,7 @@ if barstate.islast
         table.cell(campaign, 1, 7, _partZone, text_color = #7dd3fc, text_size = size.small, text_halign = text.align_left)
         table.cell(campaign, 0, 8, "Interference", text_color = #5fd0ff, text_size = size.small, text_halign = text.align_left)
         table.cell(campaign, 1, 8, _interfTx, text_color = _interfCol, text_size = size.small, text_halign = text.align_left)
-        table.cell(campaign, 0, 9, _campaign == "TERMINAL" ? "⚠ ENTRY CYCLE — read convexity" : "● BUILDING — destination known", text_color = _campaign == "TERMINAL" ? #fbbf24 : #34d399, text_size = size.small, text_halign = text.align_left)
+        table.cell(campaign, 0, 9, _campaign == "TERMINAL" ? "⚠ ENTRY CYCLE — read convexity" : (gCurve.eRes > 45 ? "● BUILDING · healthy (residual " + str.tostring(math.round(gCurve.eRes)) + "%)" : "● BUILDING · weakening (residual " + str.tostring(math.round(gCurve.eRes)) + "%)"), text_color = _campaign == "TERMINAL" ? #fbbf24 : (gCurve.eRes > 45 ? #34d399 : #fb923c), text_size = size.small, text_halign = text.align_left)
         table.cell(campaign, 1, 9, "", text_size = size.small)
 
 // ══════════════════════════════════════════════════════════════════════════════
