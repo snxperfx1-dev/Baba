@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v2", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -389,8 +389,18 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
     bool _spawn  = (_eLong or _eShort or _flipUp or _flipDn) and (not _hasCtx or _isRev)
     if _spawn
         int   _nd   = _eLong ? 1 : _eShort ? -1 : _flipUp ? 1 : -1
-        float _obT  = _nd == 1 ? _lastP : _prevP
-        float _obB  = _nd == 1 ? _prevP : _lastP
+        // DIR-FIX: order the order-block by ACTUAL price, not by pivot recency.
+        // Impulse spawns (_eLong/_eShort) already arrive ordered (last=high / last=low
+        // by construction), so _hi/_lo reproduce the old values exactly. Flip/CHoCH
+        // spawns do NOT — the two most recent pivots can be in either order, which used
+        // to invert the box (_obT<_obB) and, worse, put _inv on the wrong side of price
+        // so close>_inv flipped the whole wave-direction stack. Invalidation is now
+        // pinned to the protective extreme: the zone LOW for longs, the zone HIGH for
+        // shorts — which is the only side a wave can be invalidated from.
+        float _hi   = math.max(_lastP, _prevP)
+        float _lo   = math.min(_lastP, _prevP)
+        float _obT  = _hi
+        float _obB  = _lo
         _dir := _nd
         _ft  := _obT
         _fb  := _obB
@@ -398,7 +408,7 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
         _p4l := _obB
         _cycH := high
         _cycL := low
-        _inv := _nd == 1 ? _obB : _obT
+        _inv := _nd == 1 ? _lo : _hi
         float _rng = not na(_prSH) and not na(_prSL) ? math.abs(_prSH - _prSL) : _atr * 5.0
         _tgt := _nd == 1 ? nz(_obT, close) + _rng : nz(_obB, close) - _rng
     if _dir == 1
@@ -1461,7 +1471,7 @@ if barstate.islast
         table.cell(readout, 0, 6, "Letra · Attractor", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(readout, 1, 6, str.tostring(math.round(attractor)) + "  " + f_cpNode(_attrIdx), text_color = #fbbf24, text_size = size.small)
         table.cell(readout, 0, 7, "Network · Bias", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
-        table.cell(readout, 1, 7, netBias == 1 ? "▲ BULL" : netBias == -1 ? "▼ BEAR" : "○ —", text_color = netBias == 1 ? #34d399 : netBias == -1 ? #fb7185 : #475569, text_size = size.small)
+        table.cell(readout, 1, 7, pdir == 1 ? "▲ BULL" : pdir == -1 ? "▼ BEAR" : "○ —", text_color = pdir == 1 ? #34d399 : pdir == -1 ? #fb7185 : #475569, text_size = size.small)
         table.cell(readout, 0, 8, "Network · Nodes", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
         table.cell(readout, 1, 8, str.tostring(array.size(nPx)) + " (" + str.tostring(_eligN) + " live)", text_color = #e2e8f0, text_size = size.small)
         table.cell(readout, 0, 9, "Network · Pressure", text_color = #94a3b8, text_size = size.small, text_halign = text.align_left)
