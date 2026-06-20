@@ -11,7 +11,7 @@
 // For the FULL multi-timeframe network, run it on M1–M15 (Pine builds the network
 // from the chart timeframe upward).
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("F16 Raptor v13", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("F16 Raptor v3", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 string GRP = "Master Senseei"
@@ -35,7 +35,7 @@ bool   showMatrix  = input.bool (true, "Show Wave Matrix panel (bottom-center)",
 int    minConf     = input.int  (55,  "Min confidence to ATTACK",     group = GRP, minval = 0, maxval = 100)
 int    pivLen      = input.int  (8,   "Wave pivot length",            group = GRP, minval = 2, maxval = 50)
 bool   showRegions = input.bool (true, "Show phase REGION labels",    group = GRP)
-int    regionConfirmBars = input.int(3, "Region confirm bars (debounce)", group = GRP, minval = 1, maxval = 10)
+int    regionConfirmBars = input.int(2, "Region confirm bars (debounce)", group = GRP, minval = 1, maxval = 10)
 
 // ── Letra engine inputs (exact f_phys / f_se parameters) ──────────────────────
 string GRPL = "Letra Engine (exact)"
@@ -74,13 +74,9 @@ int    beliefSmooth   = input.int  (3,    "Belief EMA Smoothing",         group 
 //   mid rung above H1. _wtf* are simple strings (built from simple ?: over _csec),
 //   so request.security accepts them just like the old f_ltf().
 int    _csec = timeframe.in_seconds()
-// CANONICAL is now CHART-NATIVE: the on-chart phase regions (Engine 1A) read the
-// CHART's own timeframe, so M1 shows M1 structure, M15 shows M15 structure, H1 shows
-// H1 structure — instead of every intraday chart borrowing the fixed M5 wave. The
-// other five rungs still climb for multi-timeframe context. (_wtf3 == chart TF.)
-string _wtf3 = timeframe.period
 string _wtf1 = _csec < 3600 ? "1"   : _csec < 14400 ? "60"  : _csec < 86400 ? "240" : _csec < 604800 ? "D"  : "W"
 string _wtf2 = _csec < 3600 ? "3"   : _csec < 14400 ? "120" : _csec < 86400 ? "480" : _csec < 604800 ? "2D" : "2W"
+string _wtf3 = _csec < 3600 ? "5"   : _csec < 14400 ? "240" : _csec < 86400 ? "720" : _csec < 604800 ? "3D" : "M"
 string _wtf4 = _csec < 3600 ? "15"  : _csec < 14400 ? "480" : _csec < 86400 ? "D"   : _csec < 604800 ? "W"  : "3M"
 string _wtf5 = _csec < 3600 ? "60"  : _csec < 14400 ? "720" : _csec < 86400 ? "2D"  : _csec < 604800 ? "2W" : "6M"
 string _wtf6 = _csec < 3600 ? "240" : _csec < 14400 ? "D"   : _csec < 86400 ? "3D"  : _csec < 604800 ? "M"  : "12M"
@@ -418,13 +414,7 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
     bool _hasCtx = _dir != 0 and not na(_ft)
     bool _flipDn = _dir == 1  and _bearCH
     bool _flipUp = _dir == -1 and _bullCH
-    // PERSISTENCE FIX (Class E): once a wave has context it NO LONGER reverses on a
-    // bare counter-impulse. It only respawns on a CONFIRMED reversal — a CHoCH
-    // against it (_flipUp/_flipDn) or a hard origin breach (close beyond the
-    // invalidation). This stops the phase machine dying on every pullback, so it
-    // can actually mature up the ladder (Induction → Liquidity → Creation → …).
-    bool _hardInv = _hasCtx and not na(_inv) and (_dir == 1 ? close < _inv : close > _inv)
-    bool _isRev  = _flipUp or _flipDn or _hardInv
+    bool _isRev  = (_eLong and _dir == -1) or (_eShort and _dir == 1) or _flipUp or _flipDn
     bool _spawn  = (_eLong or _eShort or _flipUp or _flipDn) and (not _hasCtx or _isRev)
     if _spawn
         int   _nd   = _eLong ? 1 : _eShort ? -1 : _flipUp ? 1 : -1
@@ -498,124 +488,47 @@ f_se(simple int _pvLen, simple int _stLen, simple int _atrL, simple float _effT,
     float _convScore = math.min(math.abs(_csm) / math.max(_atr * _convM, 1e-10) * 50.0, 100.0)
     float _expScore  = math.min(_eff / math.max(_effT, 1e-10) * 50.0 + _disp / math.max(_dispT, 1e-10) * 50.0, 100.0)
     float _absScore  = (_eff < _effT * 0.7 and math.abs(_vel) < math.abs(_vel[1]) * 0.6) ? 60.0 + _convScore * 0.4 : _convScore * 0.3
-    // PHASE-FIX (direction): the phase machine reasons with the SAME origin-based
-    // direction the chart displays — _wdir = sign(close - invalidation) — so the
-    // phase FAMILY (Expansion vs Retracement) and the New High/Low · Demand/Supply
-    // Return labels can never disagree with the wave-direction stack. Falls back to
-    // the spawn direction before _inv exists. _dirLabel is now literally _wdir.
-    int   _wdir = not na(_inv) ? (close > _inv ? 1 : close < _inv ? -1 : _dir) : _dir
-    bool  _momExpStrong = _eff > _effT * 0.75 and (_wdir == 1 ? _vel > 0 : _vel < 0)
-    bool  _momDecaying  = _wdir == 1 ? _bullDec : _bearDec
-    bool  _momCounter   = _wdir == 1 ? _bearImp : _bullImp
+    bool  _momExpStrong = _eff > _effT * 0.75 and (_dir == 1 ? _vel > 0 : _vel < 0)
+    bool  _momDecaying  = _dir == 1 ? _bullDec : _bearDec
+    bool  _momCounter   = _dir == 1 ? _bearImp : _bullImp
     bool  _momExhaust   = _eff < _effT * 0.65 and _absScore > 40.0
     bool  _physConvexDevel = _convScore > 35.0
     bool  _physTransfer    = _convScore > 48.0 or _absScore > 40.0
     bool  _physCapacityLow = _absScore > 45.0 or _eff < _effT * 0.6
-    bool  _atFlip       = not na(_ft) and not na(_fb) and close <= _ft and close >= _fb
-    bool  _expanding    = _momExpStrong or _eLong or _eShort or (_wdir == 1 ? _bullImp : _bearImp)
-    // Price-structure signals for the upper ladder (so Creation/Absorption/Return
-    // are driven by what price actually DOES, not only the rare double-BOS pattern):
-    //  _atExtreme = this bar prints a fresh cycle extreme in the wave direction
-    //  _retrFrac  = how far price has pulled back from that extreme toward the flip
-    //               zone (0 at the extreme · 1 at the zone mid)
-    bool  _atExtreme = _wdir == 1 ? high >= nz(_cycH, high) : _wdir == -1 ? low <= nz(_cycL, low) : false
-    float _fzMid     = (not na(_ft) and not na(_fb)) ? (_ft + _fb) / 2.0 : na
-    float _extr      = _wdir == 1 ? nz(_cycH, close) : nz(_cycL, close)
-    float _retrFrac  = (not na(_fzMid) and math.abs(_extr - _fzMid) > 1e-10) ? math.abs(_extr - close) / math.abs(_extr - _fzMid) : 0.0
-    // The wave has travelled a real leg (≥1.5 ATR from origin to extreme) — used so a
-    // fresh extreme only counts as New High/Low once the move is meaningful.
-    bool  _extended  = not na(_inv) and math.abs(_extr - _inv) > _atr * 1.5
-    // ── RECURSIVE DISTRIBUTION CYCLE (post-extreme) ──────────────────────────
-    // After a New High/Low the wave does NOT convert straight to retracement — it
-    // distributes through a recursive cycle of FOUR opposing structural breaks:
-    // break → push back → break → … Each break is counted only once it is RE-ARMED
-    // by an intervening pullback pivot (so a single impulsive drop can't fake the
-    // whole cycle). A fresh extreme restarts the count (trend resumed).
-    var int  _recBrk = 0
-    var bool _recArm = true
+    var int _phaseState = 0
     if _reset
-        _recBrk := 0
-        _recArm := true
-    if _atExtreme and _extended
-        _recBrk := 0
-        _recArm := true
-    if (_dir == 1 and not na(_pH)) or (_dir == -1 and not na(_pL))
-        _recArm := true
-    if _oppBOS and _recArm and not _atExtreme
-        _recBrk := _recBrk + 1
-        _recArm := false
-    // ── SINGLE coherent phase state machine (0 → 13) ─────────────────────────
-    // One latch (_pst). NO parallel per-bar recompute. Monotonic within a cycle;
-    // resets to 0 (Point 4 Origin) only on a CONFIRMED reversal (CHoCH / hard origin
-    // breach) and HOLDS Origin on the birth bar. The ladder is CUMULATIVE: stages
-    // advance in strict order but multiple rungs can clear on one bar when the
-    // evidence is already present — stages cannot be skipped or oscillate. The
-    // ladder reaches the full set, including New Low (6), Retracement Liquidity (11)
-    // and Demand/Supply Return (12/13).
-    var int _pst = 0
-    if _reset
-        _pst := 0
-    if _dir != 0 and not _reset
-        // CUMULATIVE LADDER (Class E fix): each gate tests the LIVE _pst (sequential
-        // `if`, not `else if`), so when several stages' evidence is present on the
-        // same bar the wave can compress e.g. 2→3→4→5 in one bar instead of crawling
-        // one rung per candle. Order is still strictly enforced — every gate requires
-        // its predecessor state — so no stage's evidence is skipped, only time is.
-        // EXPANSION FAMILY  0→1→2→3→4 — these sub-textures only develop while the
-        // wave is CONSOLIDATING (i.e. NOT currently printing a fresh extreme).
-        if _pst == 0 and _expanding
-            _pst := 1
-        if _pst == 1 and not _atExtreme and _momDecaying and _physConvexDevel
-            _pst := 2
-        if _pst == 2 and not _atExtreme and _momCounter and _physTransfer
-            _pst := 3
-        // LIQUIDITY  3→4 : a liquidity grab — one opposing BOS (sweep) + transfer
-        if _pst == 3 and not _atExtreme and (_bos1 or _bos2) and _physTransfer
-            _pst := 4
-        // CREATION  →5 : a FRESH cycle extreme on a real leg (≥1.5 ATR) = New High/Low.
-        // Fires from ANY active stage (≥1), so genuine highs/lows are ALWAYS detected —
-        // including trend continuation, where a higher high RESCUES a wave that had
-        // already begun retracing, pulling it back to New High.  (5 → 6 for bear, below)
-        if _pst >= 1 and _atExtreme and _extended
-            _pst := 5
-        // ABSORPTION  5→7 : the New High/Low rolls over and the RECURSIVE distribution
-        // begins — the first opposing structural break is taken (or momentum exhausts).
-        if _pst == 5 and not _atExtreme and (_recBrk >= 1 or _momExhaust)
-            _pst := 7
-        // Fallback: a leg that never printed a clean New High but retraces deeply.
-        if (_pst == 3 or _pst == 4) and not _atExtreme and _retrFrac > 0.40
-            _pst := 7
-        // RETRACEMENT  7→8 : the recursive cycle COMPLETES — four opposing breaks (each
-        // re-armed by an intervening pullback). Only THEN does the high finish
-        // converting into the retracement. (Deep-retrace fallback prevents a stall.)
-        if _pst == 7 and (_recBrk >= 4 or _retrFrac > 0.55)
-            _pst := 8
-        // RETRACEMENT SUB-STRUCTURE  8→9→10→11 — must progress in order, and Liquidity
-        // is now LATE (price near the zone), fixing the previous too-early trigger.
-        if _pst == 8 and _retrFrac > 0.40
-            _pst := 9
-        if _pst == 9 and _retrFrac > 0.62
-            _pst := 10
-        if _pst == 10 and (_retrFrac > 0.85 or (_retrFrac > 0.70 and _physCapacityLow))
-            _pst := 11
-        // RETURN  11→12  (12 → 13 for bear, remapped below) — price back inside the zone
-        if _pst == 11 and _atFlip
-            _pst := 12
-    // Emit the canonical code straight from the latch — no second phase map. The
-    // discrete direction labels (New High/Low · Demand/Supply Return) use the wave's
-    // COMMITTED direction _dir (stable — only flips on confirmed reversal), not the
-    // origin-instant _wdir, which flickers when price sits on the flip zone and was
-    // making Demand Return and Supply Return print on top of each other.
-    int _phase = _pst
+        _phaseState := 0
+    if _dir != 0
+        bool _expanding = _momExpStrong or _eLong or _eShort or (_dir == 1 ? _bullImp : _bearImp)
+        if _phaseState < 1 and _expanding and not _physTransfer and not _physCapacityLow
+            _phaseState := 1
+        if _phaseState < 2 and _bos1 and _momDecaying and _physConvexDevel
+            _phaseState := 2
+        if _phaseState < 3 and _bos1 and _momCounter and _physTransfer
+            _phaseState := 3
+        if _phaseState < 4 and _bos2 and (_momDecaying or _momCounter) and _physTransfer
+            _phaseState := 4
+        if _phaseState < 5 and _indBrk and _momExpStrong and not _physCapacityLow
+            _phaseState := 5
+        if _phaseState >= 5 and _momExhaust and _physCapacityLow
+            _phaseState := 7
+        if _phaseState >= 5 and _momCounter and not _momExhaust and _physTransfer
+            _phaseState := 8
+    int _phase = _phaseState
+    if _dir != 0
+        _phase := _momExhaust and _physCapacityLow ? 7 :
+                  _momCounter and _physTransfer    ? (_phaseState >= 5 ? (_convScore > 40.0 ? 10 : _momDecaying ? 9 : 8) : (_bos2 ? 4 : 3)) :
+                  _momExpStrong ? (_phaseState >= 5 ? _phaseState : (_bos2 and _physTransfer) ? 4 : (_bos1 and _physConvexDevel) ? 2 : 1) :
+                  _momDecaying  ? (_phaseState >= 5 ? _phaseState : 4) :
+                  _phaseState == 0 ? 1 :
+                  _phaseState
     if _phase == 5 and _dir == -1
         _phase := 6
-    if _phase == 12 and _dir == -1
-        _phase := 13
-    float _wp = _pst == 0 ? 5.0 : _pst == 1 ? 18.0 : _pst == 2 ? 30.0 : _pst == 3 ? 42.0 : _pst == 4 ? 55.0 : _pst == 5 ? 68.0 : _pst == 7 ? 78.0 : _pst == 8 ? 84.0 : _pst == 9 ? 89.0 : _pst == 10 ? 93.0 : _pst == 11 ? 97.0 : 100.0
+    float _wp = _phaseState == 0 ? 10.0 : _phaseState == 1 ? 25.0 : _phaseState == 2 ? 40.0 : _phaseState == 3 ? 55.0 : _phaseState == 4 ? 68.0 : _phaseState == 5 ? 80.0 : _phaseState == 7 ? 92.0 : 85.0
     float _cm = math.min(_convScore, 100.0)
     float _mf = math.min(math.max(_expScore, math.max(_absScore, _convScore)) * 0.70 + (_dir != 0 ? 30.0 : 0.0), 100.0)
     float _frzS = math.min((_eLong or _eShort ? 50.0 : 0.0) + _expScore * 0.30 + _convScore * 0.20, 100.0)
-    int _dirLabel = _wdir
+    int _dirLabel = not na(_inv) ? (close > _inv ? 1 : close < _inv ? -1 : _dir) : _dir
     [_dirLabel, _phase, _curSH, _curSL, _prSH, _prSL, _bosOut, _chOut, _p4h, _p4l, _inv, _tgt, _ft, _fb, _frzS, _wp, _cm, _mf]
 
 f_phaseStr(int _c) =>
@@ -1218,26 +1131,15 @@ if not na(atkT3Px) and (atkT3Px >= _atkRef ? high >= atkT3Px : low <= atkT3Px)
 //   authority string `currentDisplayPhase` — no second phase map anywhere.
 // ═══════════════════════════════════════════════════════════════════════════════
 f_regCol(string _p) =>
-     str.contains(_p, "Liquidation Wave")           ? color.orange :
-     // RETRACEMENT FAMILY (checked first — these all contain "Retracement") — WARM palette
-     str.contains(_p, "Retracement Liquidity")      ? #f59e0b :
-     str.contains(_p, "Retracement Induction")      ? #fb923c :
-     str.contains(_p, "Retracement Pre-Convexity")  ? #fdba74 :
-     str.contains(_p, "Retracement")                ? #fed7aa :
-     // RETURN — direction-distinct (Demand = bull/teal · Supply = bear/red)
-     str.contains(_p, "Demand Return")              ? #2dd4bf :
-     str.contains(_p, "Supply Return")              ? #f43f5e :
-     // CREATION
-     str.contains(_p, "New High")                   ? #34d399 :
-     str.contains(_p, "New Low")                    ? #fb7185 :
-     // ABSORPTION
-     str.contains(_p, "Absorption")                 ? #f472b6 :
-     // EXPANSION FAMILY — COOL palette (distinct shade per sub-phase)
-     str.contains(_p, "Expansion Liquidity")        ? #818cf8 :
-     str.contains(_p, "Expansion Induction")        ? #38bdf8 :
-     str.contains(_p, "Expansion Pre-Convexity")    ? #22d3ee :
-     str.contains(_p, "Expansion")                  ? #34d399 :
-     #94a3b8
+     str.contains(_p, "Liquidation Wave") ? color.orange :
+     str.contains(_p, "Induction")        ? #fbbf24 :
+     str.contains(_p, "Pre-Convexity")    ? #38bdf8 :
+     str.contains(_p, "Liquidity")        ? #a78bfa :
+     str.contains(_p, "Absorption")       ? #fb7185 :
+     str.contains(_p, "New High")         ? #34d399 :
+     str.contains(_p, "New Low")          ? #fb7185 :
+     str.contains(_p, "Expansion")        ? #34d399 :
+     (str.contains(_p, "Demand Return") or str.contains(_p, "Supply Return")) ? #fbbf24 : #94a3b8
 f_regTxt(string _p) => str.upper(str.replace_all(_p, " • ", "  —  "))
 
 var array<box>   _regBoxes = array.new<box>()
